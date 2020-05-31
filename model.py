@@ -75,7 +75,7 @@ class Model(nn.Module):
 				x, _ = gcn(x, pra_A + importance)
 				
 		# prepare for seq2seq lstm model
-		graph_conv_feature = self.reshape_for_lstm(x)
+		graph_conv_feature = self.reshape_for_lstm(x) #(N*V, T, C)
 		last_position = self.reshape_for_lstm(pra_x[:,:2]) #(N, C, T, V)[:, :2] -> (N, T, V*2) [(N*V, T, C)]
 
 		if pra_teacher_forcing_ratio>0 and type(pra_teacher_location) is not type(None):

@@ -24,6 +24,7 @@ class ConvTemporalGraphical(nn.Module):
             bias=bias)
 
     def forward(self, x, A):
+#         print("Shape of A in graph conv",A.shape,"input shape",x.shape)
         assert A.size(1) == self.kernel_size
         x = self.conv(x)
         n, kc, t, v = x.size()

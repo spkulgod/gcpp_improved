@@ -10,7 +10,7 @@ from datetime import datetime
 import random
 import itertools
 
-CUDA_VISIBLE_DEVICES='1'
+CUDA_VISIBLE_DEVICES='0'
 os.environ["CUDA_VISIBLE_DEVICES"] = CUDA_VISIBLE_DEVICES
 
 def seed_torch(seed=0):
@@ -35,7 +35,7 @@ batch_size_test = 1
 total_epoch = 50
 base_lr = 0.01
 lr_decay_epoch = 5
-dev = 'cuda:0' 
+dev = torch.device("cuda:0")
 work_dir = './trained_models'
 log_file = os.path.join(work_dir,'log_test.txt')
 test_result_file = 'prediction_result.txt'
@@ -91,13 +91,16 @@ def data_loader(pra_path, pra_batch_size=128, pra_shuffle=False, pra_drop_last=F
 def preprocess_data(pra_data, pra_rescale_xy):
 	# pra_data: (N, C, T, V)
 	# C = 11: [frame_id, object_id, object_type, position_x, position_y, position_z, object_length, pbject_width, pbject_height, heading] + [mask]	
-	feature_id = [3, 4, 9, 10]
+	feature_id = [3, 4, 9, 10] # [x, y, heading, mask]
 	ori_data = pra_data[:,feature_id].detach()
-	data = ori_data.detach().clone()
-
-	new_mask = (data[:, :2, 1:]!=0) * (data[:, :2, :-1]!=0) 
-	data[:, :2, 1:] = (data[:, :2, 1:] - data[:, :2, :-1]).float() * new_mask.float()
-	data[:, :2, 0] = 0	
+	data = ori_data.detach().clone() 
+# 	print('data shape',data[:, :2, 1:]!=0)
+    
+	new_mask = (data[:, :2, 1:]!=0) * (data[:, :2, :-1]!=0) #when x and y exist for the 
+# 	print('newmask',new_mask.shape)
+	data[:, :2, 1:] = (data[:, :2, 1:] - data[:, :2, :-1]).float() * new_mask.float() #computing velocity and applying mask
+# 	print(data[0,:2,1],'sanity for 2 dimensions of data')
+	data[:, :2, 0] = 0	  
 
 	# # small vehicle: 1, big vehicles: 2, pedestrian 3, bicycle: 4, others: 5
 	object_type = pra_data[:,2:3]
@@ -135,13 +138,15 @@ def train_model(pra_model, pra_data_loader, pra_optimizer, pra_epoch_log):
 		# ori_data: (N, C, T, V)
 		# C = 11: [frame_id, object_id, object_type, position_x, position_y, position_z, object_length, pbject_width, pbject_height, heading] + [mask]
 		data, no_norm_loc_data, object_type = preprocess_data(ori_data, rescale_xy)
-		for now_history_frames in range(1, data.shape[-2]):
+		mid = int(data.shape[-2]/2)
+		print("A shape1 ::",A.shape)
+		for now_history_frames in range(mid,data.shape[-2]):  ### put just a no.
 			input_data = data[:,:,:now_history_frames,:] # (N, C, T, V)=(N, 4, 6, 120)
-			output_loc_GT = data[:,:2,now_history_frames:,:] # (N, C, T, V)=(N, 2, 6, 120)
+			output_loc_GT = data[:,:2,now_history_frames:,:] # (N, C, T, V)=(N, 2, 6, 120)  #future-gt
 			output_mask = data[:,-1:,now_history_frames:,:] # (N, C, T, V)=(N, 1, 6, 120)
 			
-			A = A.float().to(dev)
-		
+			A = A.float().to(dev) # shape(N,3,120,120) 
+			print("A shape::",A.shape,"input shape",input_data.shape)
 			predicted = pra_model(pra_x=input_data, pra_A=A, pra_pred_length=output_loc_GT.shape[-2], pra_teacher_forcing_ratio=0, pra_teacher_location=output_loc_GT) # (N, C, T, V)=(N, 2, 6, 120)
 			
 			########################################################
@@ -204,7 +209,7 @@ def val_model(pra_model, pra_data_loader):
 
 			for ind in range(1, predicted.shape[-2]):
 				predicted[:,:,ind] = torch.sum(predicted[:,:,ind-1:ind+1], dim=-2)
-			predicted += ori_output_last_loc
+			predicted += ori_output_last_loc  #traj
 
 			### overall dist
 			# overall_sum_time, overall_num, x2y2 = compute_RMSE(predicted, output_loc_GT, output_mask)		
@@ -251,7 +256,7 @@ def val_model(pra_model, pra_data_loader):
 	result_human = display_result([np.array(all_human_sum_list), np.array(all_human_num_list)], pra_pref='human')
 	result_bike = display_result([np.array(all_bike_sum_list), np.array(all_bike_num_list)], pra_pref='bike')
 
-	result = 0.20*result_car + 0.58*result_human + 0.22*result_bike
+	result = 0.20*result_car + 0.58*result_human + 0.22*result_bike #to change only for vehicles
 	overall_log = '|{}|[{}] All_All: {}'.format(datetime.now(), 'WS', ' '.join(['{:.3f}'.format(x) for x in list(result) + [np.sum(result)]]))
 	my_print(overall_log)
 
