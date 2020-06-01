@@ -110,7 +110,6 @@ def generate_train_data(pra_file_path):
 		end_ind = int(start_ind + total_frames)
 		observed_last = start_ind + history_frames - 1
 		object_frame_feature, neighbor_matrix, mean_xy = process_data(now_dict, start_ind, end_ind, observed_last)
-
 		all_feature_list.append(object_frame_feature)
 		all_adjacency_list.append(neighbor_matrix)	
 		all_mean_list.append(mean_xy)	

@@ -32,7 +32,7 @@ future_frames = 6 # 3 second * 2 frame/second
 batch_size_train = 64 
 batch_size_val = 32
 batch_size_test = 1
-total_epoch = 50
+total_epoch = 30
 base_lr = 0.01
 lr_decay_epoch = 5
 dev = torch.device("cuda:0")
@@ -137,17 +137,16 @@ def train_model(pra_model, pra_data_loader, pra_optimizer, pra_epoch_log):
 		# print(iteration, ori_data.shape, A.shape)
 		# ori_data: (N, C, T, V)
 		# C = 11: [frame_id, object_id, object_type, position_x, position_y, position_z, object_length, pbject_width, pbject_height, heading] + [mask]
+        # A:(N,3,120,120) 
 		data, no_norm_loc_data, object_type = preprocess_data(ori_data, rescale_xy)
 		mid = int(data.shape[-2]/2)
-		print("A shape1 ::",A.shape)
-		for now_history_frames in range(mid,data.shape[-2]):  ### put just a no.
+		for now_history_frames in range(1, data.shape[-2]):  ### put just a no.
 			input_data = data[:,:,:now_history_frames,:] # (N, C, T, V)=(N, 4, 6, 120)
 			output_loc_GT = data[:,:2,now_history_frames:,:] # (N, C, T, V)=(N, 2, 6, 120)  #future-gt
 			output_mask = data[:,-1:,now_history_frames:,:] # (N, C, T, V)=(N, 1, 6, 120)
 			
 			A = A.float().to(dev) # shape(N,3,120,120) 
-			print("A shape::",A.shape,"input shape",input_data.shape)
-			predicted = pra_model(pra_x=input_data, pra_A=A, pra_pred_length=output_loc_GT.shape[-2], pra_teacher_forcing_ratio=0, pra_teacher_location=output_loc_GT) # (N, C, T, V)=(N, 2, 6, 120)
+			predicted = pra_model(pra_x=input_data, pra_A=A, pra_pred_length=output_loc_GT.shape[-2], pra_teacher_forcing_ratio=1, pra_teacher_location=output_loc_GT) # (N, C, T, V)=(N, 2, 6, 120)
 			
 			########################################################
 			# Compute loss for training
@@ -317,7 +316,7 @@ def test_model(pra_model, pra_data_loader):
 						information = info.copy()
 						information[0] = information[0] + time_ind
 						result = ' '.join(information.astype(str)) + ' ' + ' '.join(pred.astype(str)) + '\n'
-						# print(result)
+						print(result)
 						writer.write(result)
 
 
@@ -360,9 +359,9 @@ if __name__ == '__main__':
 	# train and evaluate model
 	run_trainval(model, pra_traindata_path='./train_data.pkl', pra_testdata_path='./test_data.pkl')
 	
-	# pretrained_model_path = './trained_models/model_epoch_0016.pt'
-	# model = my_load_model(model, pretrained_model_path)
-	# run_test(model, './test_data.pkl')
+# 	pretrained_model_path = './trained_models_gt/model_epoch_0020.pt'
+# 	model = my_load_model(model, pretrained_model_path)
+# 	run_test(model, './test_data.pkl')
 	
 		
 		

@@ -12,37 +12,45 @@ class Graph():
 				 num_node = 120,
 				 max_hop = 1
 				 ):
-		self.max_hop = max_hop
+		self.max_hop = max_hop #2
 		self.num_node = num_node 
 
 	def get_adjacency(self, A):
-		# compute hop steps
-		self.hop_dis = np.zeros((self.num_node, self.num_node)) + np.inf
-		transfer_mat = [np.linalg.matrix_power(A, d) for d in range(self.max_hop + 1)]
-		arrive_mat = (np.stack(transfer_mat) > 0)
-		for d in range(self.max_hop, -1, -1):
-			self.hop_dis[arrive_mat[d]] = d
+# 		# compute hop steps
+# 		self.hop_dis = np.zeros((self.num_node, self.num_node)) + np.inf
+# 		transfer_mat = [np.linalg.matrix_power(A, d) for d in range(self.max_hop + 1)]
+# 		arrive_mat = (np.stack(transfer_mat) > 0)
+# 		print("arrive mat", arrive_mat.shape)
+# 		for d in range(self.max_hop, -1, -1):
+# 			self.hop_dis[arrive_mat[d]] = d
 
-		# compute adjacency
-		valid_hop = range(0, self.max_hop + 1)
+# 		# compute adjacency
+# 		valid_hop = range(0, self.max_hop + 1)
+# 		adjacency = np.zeros((self.num_node, self.num_node))
+# 		for hop in valid_hop:
+# 			adjacency[self.hop_dis == hop] = 1
+		transfer_mat = [np.linalg.matrix_power(A, d) for d in range(self.max_hop + 1)]
+		arrive_mat = np.any((np.stack(transfer_mat) > 0),axis=0)
 		adjacency = np.zeros((self.num_node, self.num_node))
-		for hop in valid_hop:
-			adjacency[self.hop_dis == hop] = 1
+		adjacency[arrive_mat] = 1
 		return adjacency
 
 	def normalize_adjacency(self, A):
-		Dl = np.sum(A, 0)
-		num_node = A.shape[0]
+		Dl = np.sum(A, 0) #120
+		num_node = A.shape[0] #120
 		Dn = np.zeros((num_node, num_node))
 		for i in range(num_node):
 			if Dl[i] > 0:
 				Dn[i, i] = Dl[i]**(-1)
-		AD = np.dot(A, Dn)
+		AD = np.dot(A, Dn)  #eq5
+		A = np.zeros((self.max_hop + 1, self.num_node, self.num_node))
+		for i in range(self.max_hop + 1):
+			A[i] = np.linalg.matrix_power(AD, i)  
 
-		valid_hop = range(0, self.max_hop + 1)
-		A = np.zeros((len(valid_hop), self.num_node, self.num_node))
-		for i, hop in enumerate(valid_hop):
-			A[i][self.hop_dis == hop] = AD[self.hop_dis == hop]
+# 		valid_hop = range(0, self.max_hop + 1)
+# 		A = np.zeros((len(valid_hop), self.num_node, self.num_node))
+# 		for i, hop in enumerate(valid_hop):
+# 			A[i][self.hop_dis == hop] = AD[self.hop_dis == hop]
 		return A
 
 

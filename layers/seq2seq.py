@@ -16,7 +16,7 @@ class EncoderRNN(nn.Module):
 		self.isCuda = isCuda
 		# self.lstm = nn.LSTM(input_size, hidden_size, num_layers, batch_first=True)
 		self.lstm = nn.GRU(input_size, hidden_size*30, num_layers, batch_first=True)
-		
+		#input [7680, T, 64] , [  N*V, T, 64]  #HIDDEN 2 X 7680 X 60
 	def forward(self, input):
 		output, hidden = self.lstm(input)
 		return output, hidden
@@ -57,20 +57,22 @@ class Seq2Seq(nn.Module):
 	
 	def forward(self, in_data, last_location, pred_length, teacher_forcing_ratio=0, teacher_location=None):
 		batch_size = in_data.shape[0]
-		out_dim = self.decoder.output_size
+		out_dim = self.decoder.output_size  #2     
 		self.pred_length = pred_length
 
 		outputs = torch.zeros(batch_size, self.pred_length, out_dim)
 		if self.isCuda:
 			outputs = outputs.cuda()
 
+# 		print("lstm in data shape",in_data.shape)  
 		encoded_output, hidden = self.encoder(in_data)
+# 		print("hidden data shape",hidden.shape)   
 		decoder_input = last_location
 		for t in range(self.pred_length):
 			# encoded_input = torch.cat((now_label, encoded_input), dim=-1) # merge class label into input feature
 			now_out, hidden = self.decoder(decoder_input, hidden)
 			now_out += decoder_input
-			outputs[:,t:t+1] = now_out 
+			outputs[:,t:t+1] = now_out #UPDATE FOR TIMESTEPS
 			teacher_force = np.random.random() < teacher_forcing_ratio
 			decoder_input = (teacher_location[:,t:t+1] if (type(teacher_location) is not type(None)) and teacher_force else now_out)
 			# decoder_input = now_out
