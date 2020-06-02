@@ -29,7 +29,7 @@ max_y = 1.
 history_frames = 6 # 3 second * 2 frame/second
 future_frames = 12 # 6 second * 2 frame/second 
 
-batch_size_train = 64 
+batch_size_train = 128 
 batch_size_val = 32
 batch_size_test = 1
 total_epoch = 50
@@ -43,6 +43,9 @@ test_result_file = 'prediction_result.txt'
 
 criterion = torch.nn.SmoothL1Loss()
 
+min_it = np.infty
+min_ade = np.infty
+
 if not os.path.exists(work_dir):
     os.makedirs(work_dir)
 
@@ -52,7 +55,8 @@ def my_print(pra_content):
         writer.write(pra_content+'\n')
 
 def display_result(pra_results, pra_pref='Train_epoch'):
-    all_overall_sum_list, all_overall_num_list, all_overall_ade_list = pra_results
+    global min_it,min_ade
+    all_overall_sum_list, all_overall_num_list, all_overall_ade_list,iteration = pra_results
     overall_sum_time = np.sum(all_overall_sum_list**0.5, axis=0) #  t
     overall_num_time = np.sum(all_overall_num_list, axis=0) # t 
     overall_ade_time =  np.sum(all_overall_ade_list, axis=0) #t
@@ -61,15 +65,20 @@ def display_result(pra_results, pra_pref='Train_epoch'):
 
     overall_loss_time = (overall_sum_time / overall_num_time)
 # 	overall_num_time=torch.from_numpy(overall_num_time)
-    overall_ade_time= overall_ade_time.cpu()
-    overall_ade_time2= overall_ade_time.detach().numpy()
-    print(type(overall_ade_time2))  #shd be numpy.ndarray
-    overall_ade_tim = (overall_ade_time2 / overall_num_time)
+#     overall_ade_time= overall_ade_time.cpu()
+#     overall_ade_time2= overall_ade_time.detach().numpy()
+#     print(type(overall_ade_time))  #shd be numpy.ndarray
+    overall_ade_tim = (overall_ade_time / overall_num_time)
 
     overall_log = '|{}|[{}] All_All: {}'.format(datetime.now(), pra_pref, ' '.join(['{:.3f}'.format(x) for x in list(overall_loss_time) + [np.sum(overall_loss_time)]]))
     my_print(overall_log)
     my_print('ADE={}'.format(overall_ade_tim))
-    my_print('ADE mean={}'.format(np.mean(overall_ade_tim)))
+    mean_ade = np.mean(overall_ade_tim)
+    if(mean_ade<min_ade):
+        min_ade = mean_ade
+        min_it = iteration
+    my_print('ADE mean={}'.format(mean_ade))
+    my_print('ADE min={},  Iteration ={}'.format(min_ade,min_it))
     return overall_loss_time
 
 
@@ -97,7 +106,7 @@ def data_loader(pra_path, pra_batch_size=128, pra_shuffle=False, pra_drop_last=F
         batch_size=pra_batch_size,
         shuffle=pra_shuffle,
         drop_last=pra_drop_last, 
-        num_workers=10,
+        num_workers=5,
         )
     return loader
 
@@ -155,7 +164,7 @@ def train_model(pra_model, pra_data_loader, pra_optimizer, pra_epoch_log):
         data, no_norm_loc_data, object_type = preprocess_data(ori_data, rescale_xy)
         mid = int(data.shape[-2]/2)
         #print("A shape1 ::",A.shape)
-        for now_history_frames in range(1,data.shape[-2]):  ### put just a no.
+        for now_history_frames in range(mid,mid+1):  ### put just a no.
             input_data = data[:,:,:now_history_frames,:] # (N, C, T, V)=(N, 4, 6, 120)
             output_loc_GT = data[:,:2,now_history_frames:,:] # (N, C, T, V)=(N, 2, 6, 120)  #future-gt
             output_mask = data[:,-1:,now_history_frames:,:] # (N, C, T, V)=(N, 1, 6, 120)
@@ -176,13 +185,13 @@ def train_model(pra_model, pra_data_loader, pra_optimizer, pra_epoch_log):
             total_loss = torch.sum(overall_sum_time) / torch.max(torch.sum(overall_num), torch.ones(1,).to(dev)) #(1,)
 
             now_lr = [param_group['lr'] for param_group in pra_optimizer.param_groups][0]
-            my_print('|{}|{:>20}|\tIteration:{:>5}|\tLoss:{:.8f}|lr: {}|'.format(datetime.now(), pra_epoch_log, iteration, total_loss.data.item(),now_lr))
+            print('|{}|{:>20}|\tIteration:{:>5}|\tLoss:{:.8f}|lr: {}|'.format(datetime.now(), pra_epoch_log, iteration, total_loss.data.item(),now_lr))
 
             pra_optimizer.zero_grad()
             total_loss.backward()
             pra_optimizer.step()
 
-def val_model(pra_model, pra_data_loader):
+def val_model(pra_model, pra_data_loader,train_it):
     # pra_model.to(dev)
     pra_model.eval()
     rescale_xy = torch.ones((1,2,1,1)).to(dev)
@@ -223,7 +232,7 @@ def val_model(pra_model, pra_data_loader):
             cat_mask = ori_data[:,2:3, now_history_frames:, :] # (N, C, T, V)=(N, 1, 6, 120)
 
             A = A.float().to(dev)
-            predicted = pra_model(pra_x=input_data, pra_A=A, pra_pred_length=output_loc_GT.shape[-2], pra_teacher_forcing_ratio=1, pra_teacher_location=output_loc_GT) # (N, C, T, V)=(N, 2, 6, 120)
+            predicted = pra_model(pra_x=input_data, pra_A=A, pra_pred_length=output_loc_GT.shape[-2], pra_teacher_forcing_ratio=0, pra_teacher_location=output_loc_GT) # (N, C, T, V)=(N, 2, 6, 120)
             ########################################################
             # Compute details for training
             ########################################################
@@ -244,7 +253,7 @@ def val_model(pra_model, pra_data_loader):
             now_x2y2 = x2y2.detach().cpu().numpy()
             now_x2y2 = now_x2y2.sum(axis=-1)
             all_overall_sum_list.extend(now_x2y2)
-            all_overall_ade_list.extend(ade_sum)
+            all_overall_ade_list.extend(ade_sum.detach().cpu().numpy())
 
             ### car dist
             car_mask = (((cat_mask==1)+(cat_mask==2))>0).float().to(dev)
@@ -255,40 +264,40 @@ def val_model(pra_model, pra_data_loader):
             car_x2y2 = car_x2y2.detach().cpu().numpy()
             car_x2y2 = car_x2y2.sum(axis=-1)
             all_car_sum_list.extend(car_x2y2)
-            all_car_ade_list.extend(car_ade)
+            all_car_ade_list.extend(car_ade.detach().cpu().numpy())
 
-            ### human dist
-            human_mask = (cat_mask==3).float().to(dev)
-            human_mask = output_mask * human_mask
-            human_sum_time, human_num, human_x2y2, human_ade = compute_RMSE(predicted, ori_output_loc_GT, human_mask)		
-            all_human_num_list.extend(human_num.detach().cpu().numpy())
-            # x2y2 (N, 6, 39)
-            human_x2y2 = human_x2y2.detach().cpu().numpy()
-            human_x2y2 = human_x2y2.sum(axis=-1)
-            all_human_sum_list.extend(human_x2y2)
-            all_human_ade_list.extend(human_ade)
+#             ### human dist
+#             human_mask = (cat_mask==3).float().to(dev)
+#             human_mask = output_mask * human_mask
+#             human_sum_time, human_num, human_x2y2, human_ade = compute_RMSE(predicted, ori_output_loc_GT, human_mask)		
+#             all_human_num_list.extend(human_num.detach().cpu().numpy())
+#             # x2y2 (N, 6, 39)
+#             human_x2y2 = human_x2y2.detach().cpu().numpy()
+#             human_x2y2 = human_x2y2.sum(axis=-1)
+#             all_human_sum_list.extend(human_x2y2)
+#             all_human_ade_list.extend(human_ade)
 
-            ### bike dist
-            bike_mask = (cat_mask==4).float().to(dev)
-            bike_mask = output_mask * bike_mask
-            bike_sum_time, bike_num, bike_x2y2, bike_ade = compute_RMSE(predicted, ori_output_loc_GT, bike_mask)		
-            all_bike_num_list.extend(bike_num.detach().cpu().numpy())
-            # x2y2 (N, 6, 39)
-            bike_x2y2 = bike_x2y2.detach().cpu().numpy()
-            bike_x2y2 = bike_x2y2.sum(axis=-1)
-            all_bike_sum_list.extend(bike_x2y2)
-            all_bike_ade_list.extend(bike_ade)
+#             ### bike dist
+#             bike_mask = (cat_mask==4).float().to(dev)
+#             bike_mask = output_mask * bike_mask
+#             bike_sum_time, bike_num, bike_x2y2, bike_ade = compute_RMSE(predicted, ori_output_loc_GT, bike_mask)		
+#             all_bike_num_list.extend(bike_num.detach().cpu().numpy())
+#             # x2y2 (N, 6, 39)
+#             bike_x2y2 = bike_x2y2.detach().cpu().numpy()
+#             bike_x2y2 = bike_x2y2.sum(axis=-1)
+#             all_bike_sum_list.extend(bike_x2y2)
+#             all_bike_ade_list.extend(bike_ade)
 
 
-    result_car = display_result([np.array(all_car_sum_list), np.array(all_car_num_list) , np.array(all_car_ade_list)], pra_pref='car')
-    result_human =display_result([np.array(all_human_sum_list),np.array(all_human_num_list),np.array(all_human_ade_list)],pra_pref='human')
-    result_bike = display_result([np.array(all_bike_sum_list), np.array(all_bike_num_list), np.array(all_bike_ade_list)], pra_pref='bike')
+    result_car = display_result([np.array(all_car_sum_list), np.array(all_car_num_list) , np.array(all_car_ade_list), train_it ], pra_pref='car')
+#     result_human =display_result([np.array(all_human_sum_list),np.array(all_human_num_list),np.array(all_human_ade_list)],pra_pref='human')
+#     result_bike = display_result([np.array(all_bike_sum_list), np.array(all_bike_num_list), np.array(all_bike_ade_list)], pra_pref='bike')
 
 # 	result_car_ade = display_result([np.array(all_car_ade_list), np.array(all_car_num_list)], pra_pref='car')
 # 	result_human_ade = display_result([np.array(all_human_ade_list), np.array(all_human_num_list)], pra_pref='human')
 # 	result_bike_ade = display_result([np.array(all_bike_ade_list), np.array(all_bike_num_list)], pra_pref='bike')
 
-    result = 0.20*result_car + 0.58*result_human + 0.22*result_bike #to change only for vehicles
+    result = result_car #to change only for vehicles
     overall_log = '|{}|[{}] All_All: {}'.format(datetime.now(), 'WS', ' '.join(['{:.3f}'.format(x) for x in list(result) + [np.sum(result)]]))
     my_print(overall_log)
 
@@ -296,7 +305,7 @@ def val_model(pra_model, pra_data_loader):
     all_overall_num_list = np.array(all_overall_num_list)
     all_overall_ade_list = np.array(all_overall_ade_list)
 
-    return all_overall_sum_list, all_overall_num_list, all_overall_ade_list
+    return all_overall_sum_list, all_overall_num_list, all_overall_ade_list, train_it
 
 
 
@@ -363,16 +372,16 @@ def run_trainval(pra_model, pra_traindata_path, pra_testdata_path):
         [{'params':model.parameters()},],) # lr = 0.0001)
 
     for now_epoch in range(total_epoch):
-#         all_loader_train = loader_train
+        all_loader_train = loader_train
 
-#         my_print('#######################################Train')
-#         train_model(pra_model, all_loader_train, pra_optimizer=optimizer, pra_epoch_log='Epoch:{:>4}/{:>4}'.format(now_epoch, total_epoch))
+        my_print('#######################################Train')
+        train_model(pra_model, all_loader_train, pra_optimizer=optimizer, pra_epoch_log='Epoch:{:>4}/{:>4}'.format(now_epoch, total_epoch))
 
-#         my_save_model(pra_model, now_epoch)
+        my_save_model(pra_model, now_epoch)
 
         my_print('#######################################Test')
         display_result(
-            val_model(pra_model, loader_val),
+            val_model(pra_model, loader_val,now_epoch),
             pra_pref='{}_Epoch{}'.format('Test', now_epoch),
         )
 
@@ -384,7 +393,8 @@ def run_test(pra_model, pra_data_path):
 
 
 if __name__ == '__main__':
-    graph_args={'max_hop':2, 'num_node':50} #120 apolo
+#     graph_args={'max_hop':2, 'num_node':120} #120 apolo
+    graph_args={'max_hop':2, 'num_node':50}
     model = Model(in_channels=4, graph_args=graph_args, edge_importance_weighting=True)
     model.to(dev)
 
@@ -392,7 +402,6 @@ if __name__ == '__main__':
 #     run_trainval(model, pra_traindata_path='./nuscenes_pkl/train_data.pkl', pra_testdata_path='./nuscenes_pkl/test_data.pkl')
     run_trainval(model, pra_traindata_path='./Dataset2/train_data.pkl', pra_testdata_path='./Dataset2/test_data.pkl')
     
-
     # pretrained_model_path = './trained_models/model_epoch_0016.pt'
     # model = my_load_model(model, pretrained_model_path)
     # run_test(model, './test_data.pkl')
