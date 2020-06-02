@@ -30,7 +30,7 @@ history_frames = 6 # 3 second * 2 frame/second
 future_frames = 12 # 6 second * 2 frame/second 
 
 batch_size_train = 128 
-batch_size_val = 8
+batch_size_val = 32
 batch_size_test = 1
 total_epoch = 50
 base_lr = 0.01
