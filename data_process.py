@@ -5,7 +5,7 @@ from scipy import spatial
 import pickle
 
 # Please change this to your location
-data_root = 'Dataset/'
+data_root = 'Dataset2/'
 
 
 history_frames = 6 # 3 second * 2 frame/second

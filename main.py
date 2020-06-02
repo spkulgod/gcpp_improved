@@ -155,7 +155,7 @@ def train_model(pra_model, pra_data_loader, pra_optimizer, pra_epoch_log):
         data, no_norm_loc_data, object_type = preprocess_data(ori_data, rescale_xy)
         mid = int(data.shape[-2]/2)
         #print("A shape1 ::",A.shape)
-        for now_history_frames in range(mid,data.shape[-2]):  ### put just a no.
+        for now_history_frames in range(1,data.shape[-2]):  ### put just a no.
             input_data = data[:,:,:now_history_frames,:] # (N, C, T, V)=(N, 4, 6, 120)
             output_loc_GT = data[:,:2,now_history_frames:,:] # (N, C, T, V)=(N, 2, 6, 120)  #future-gt
             output_mask = data[:,-1:,now_history_frames:,:] # (N, C, T, V)=(N, 1, 6, 120)
@@ -363,12 +363,12 @@ def run_trainval(pra_model, pra_traindata_path, pra_testdata_path):
         [{'params':model.parameters()},],) # lr = 0.0001)
 
     for now_epoch in range(total_epoch):
-        all_loader_train = loader_train
+#         all_loader_train = loader_train
 
-        my_print('#######################################Train')
-        train_model(pra_model, all_loader_train, pra_optimizer=optimizer, pra_epoch_log='Epoch:{:>4}/{:>4}'.format(now_epoch, total_epoch))
+#         my_print('#######################################Train')
+#         train_model(pra_model, all_loader_train, pra_optimizer=optimizer, pra_epoch_log='Epoch:{:>4}/{:>4}'.format(now_epoch, total_epoch))
 
-        my_save_model(pra_model, now_epoch)
+#         my_save_model(pra_model, now_epoch)
 
         my_print('#######################################Test')
         display_result(
@@ -384,13 +384,13 @@ def run_test(pra_model, pra_data_path):
 
 
 if __name__ == '__main__':
-    graph_args={'max_hop':2, 'num_node':120} #120 apolo
+    graph_args={'max_hop':2, 'num_node':50} #120 apolo
     model = Model(in_channels=4, graph_args=graph_args, edge_importance_weighting=True)
     model.to(dev)
 
     # train and evaluate model
 #     run_trainval(model, pra_traindata_path='./nuscenes_pkl/train_data.pkl', pra_testdata_path='./nuscenes_pkl/test_data.pkl')
-    run_trainval(model, pra_traindata_path='./Dataset/train_data.pkl', pra_testdata_path='./Dataset/test_data.pkl')
+    run_trainval(model, pra_traindata_path='./Dataset2/train_data.pkl', pra_testdata_path='./Dataset2/test_data.pkl')
     
 
     # pretrained_model_path = './trained_models/model_epoch_0016.pt'
