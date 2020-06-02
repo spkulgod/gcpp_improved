@@ -27,7 +27,7 @@ seed_torch()
 max_x = 1. 
 max_y = 1. 
 history_frames = 6 # 3 second * 2 frame/second
-future_frames = 6 # 3 second * 2 frame/second
+future_frames = 12 # 6 second * 2 frame/second 
 
 batch_size_train = 64 
 batch_size_val = 32
@@ -68,7 +68,8 @@ def display_result(pra_results, pra_pref='Train_epoch'):
 
     overall_log = '|{}|[{}] All_All: {}'.format(datetime.now(), pra_pref, ' '.join(['{:.3f}'.format(x) for x in list(overall_loss_time) + [np.sum(overall_loss_time)]]))
     my_print(overall_log)
-    print("ADE:",overall_ade_tim)
+    my_print('ADE={}'.format(overall_ade_tim))
+    my_print('ADE mean={}'.format(np.mean(overall_ade_tim)))
     return overall_loss_time
 
 
@@ -133,11 +134,8 @@ def compute_RMSE(pra_pred, pra_GT, pra_mask, pra_error_order=2):
     overall_mask = pra_mask.sum(dim=1).sum(dim=-1) # (N, C, T, V) -> (N, T)=(N, 6)
     overall_num = overall_mask 
 
-    ade_sum=torch.sqrt(x2y2)
-    ade_sum=torch.sum(ade_sum,dim=-1) # N,6
-
-
-
+    ade_sum=torch.sqrt(x2y2) # (N,T,V)
+    ade_sum=torch.sum(ade_sum,dim=-1) # (N,6)
 
     return overall_sum_time, overall_num, x2y2,ade_sum
 
@@ -163,8 +161,10 @@ def train_model(pra_model, pra_data_loader, pra_optimizer, pra_epoch_log):
             output_mask = data[:,-1:,now_history_frames:,:] # (N, C, T, V)=(N, 1, 6, 120)
 
             A = A.float().to(dev) # shape(N,3,120,120) 
+
             #print("A shape::",A.shape,"input shape",input_data.shape)
             predicted = pra_model(pra_x=input_data, pra_A=A, pra_pred_length=output_loc_GT.shape[-2], pra_teacher_forcing_ratio=0, pra_teacher_location=output_loc_GT) # (N, C, T, V)=(N, 2, 6, 120)
+
 
             ########################################################
             # Compute loss for training
@@ -223,7 +223,7 @@ def val_model(pra_model, pra_data_loader):
             cat_mask = ori_data[:,2:3, now_history_frames:, :] # (N, C, T, V)=(N, 1, 6, 120)
 
             A = A.float().to(dev)
-            predicted = pra_model(pra_x=input_data, pra_A=A, pra_pred_length=output_loc_GT.shape[-2], pra_teacher_forcing_ratio=0, pra_teacher_location=output_loc_GT) # (N, C, T, V)=(N, 2, 6, 120)
+            predicted = pra_model(pra_x=input_data, pra_A=A, pra_pred_length=output_loc_GT.shape[-2], pra_teacher_forcing_ratio=1, pra_teacher_location=output_loc_GT) # (N, C, T, V)=(N, 2, 6, 120)
             ########################################################
             # Compute details for training
             ########################################################
@@ -321,7 +321,7 @@ def test_model(pra_model, pra_data_loader):
             ori_output_last_loc = no_norm_loc_data[:,:2,history_frames-1:history_frames,:]
 
             A = A.float().to(dev)
-            predicted = pra_model(pra_x=input_data, pra_A=A, pra_pred_length=future_frames, pra_teacher_forcing_ratio=0, pra_teacher_location=None) # (N, C, T, V)=(N, 2, 6, 120)
+            predicted = pra_model(pra_x=input_data, pra_A=A, pra_pred_length=future_frames, pra_teacher_forcing_ratio=1, pra_teacher_location=None) # (N, C, T, V)=(N, 2, 6, 120)
             predicted = predicted *rescale_xy 
 
             for ind in range(1, predicted.shape[-2]):
@@ -357,16 +357,13 @@ def test_model(pra_model, pra_data_loader):
 
 def run_trainval(pra_model, pra_traindata_path, pra_testdata_path):
     loader_train = data_loader(pra_traindata_path, pra_batch_size=batch_size_train, pra_shuffle=True, pra_drop_last=True, train_val_test='train')
-    loader_test = data_loader(pra_testdata_path, pra_batch_size=batch_size_train, pra_shuffle=True, pra_drop_last=True, train_val_test='all')
-
-    # evaluate on testing data (observe 5 frame and predict 1 frame)
-    loader_val = data_loader(pra_traindata_path, pra_batch_size=batch_size_val, pra_shuffle=False, pra_drop_last=False, train_val_test='val') 
+    loader_val = data_loader(pra_testdata_path, pra_batch_size=batch_size_train, pra_shuffle=True, pra_drop_last=True, train_val_test='val')
 
     optimizer = optim.Adam(
         [{'params':model.parameters()},],) # lr = 0.0001)
 
     for now_epoch in range(total_epoch):
-        all_loader_train = itertools.chain(loader_train, loader_test)
+        all_loader_train = loader_train
 
         my_print('#######################################Train')
         train_model(pra_model, all_loader_train, pra_optimizer=optimizer, pra_epoch_log='Epoch:{:>4}/{:>4}'.format(now_epoch, total_epoch))
@@ -387,12 +384,14 @@ def run_test(pra_model, pra_data_path):
 
 
 if __name__ == '__main__':
-    graph_args={'max_hop':2, 'num_node':120}
+    graph_args={'max_hop':2, 'num_node':120} #120 apolo
     model = Model(in_channels=4, graph_args=graph_args, edge_importance_weighting=True)
     model.to(dev)
 
     # train and evaluate model
-    run_trainval(model, pra_traindata_path='./train_data.pkl', pra_testdata_path='./test_data.pkl')
+#     run_trainval(model, pra_traindata_path='./nuscenes_pkl/train_data.pkl', pra_testdata_path='./nuscenes_pkl/test_data.pkl')
+    run_trainval(model, pra_traindata_path='./Dataset/train_data.pkl', pra_testdata_path='./Dataset/test_data.pkl')
+    
 
     # pretrained_model_path = './trained_models/model_epoch_0016.pt'
     # model = my_load_model(model, pretrained_model_path)
