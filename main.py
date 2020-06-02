@@ -69,6 +69,7 @@ def display_result(pra_results, pra_pref='Train_epoch'):
     overall_log = '|{}|[{}] All_All: {}'.format(datetime.now(), pra_pref, ' '.join(['{:.3f}'.format(x) for x in list(overall_loss_time) + [np.sum(overall_loss_time)]]))
     my_print(overall_log)
     my_print('ADE={}'.format(overall_ade_tim))
+    my_print('FDE={}'.format(overall_ade_tim[-1]))
     my_print('ADE mean={}'.format(np.mean(overall_ade_tim)))
     return overall_loss_time
 
@@ -163,7 +164,7 @@ def train_model(pra_model, pra_data_loader, pra_optimizer, pra_epoch_log):
             A = A.float().to(dev) # shape(N,3,120,120) 
 
             #print("A shape::",A.shape,"input shape",input_data.shape)
-            predicted = pra_model(pra_x=input_data, pra_A=A, pra_pred_length=output_loc_GT.shape[-2], pra_teacher_forcing_ratio=0, pra_teacher_location=output_loc_GT) # (N, C, T, V)=(N, 2, 6, 120)
+            predicted = pra_model(pra_x=input_data, pra_A=A, pra_pred_length=output_loc_GT.shape[-2], pra_teacher_forcing_ratio=1, pra_teacher_location=output_loc_GT) # (N, C, T, V)=(N, 2, 6, 120)
 
 
             ########################################################
@@ -223,7 +224,7 @@ def val_model(pra_model, pra_data_loader):
             cat_mask = ori_data[:,2:3, now_history_frames:, :] # (N, C, T, V)=(N, 1, 6, 120)
 
             A = A.float().to(dev)
-            predicted = pra_model(pra_x=input_data, pra_A=A, pra_pred_length=output_loc_GT.shape[-2], pra_teacher_forcing_ratio=1, pra_teacher_location=output_loc_GT) # (N, C, T, V)=(N, 2, 6, 120)
+            predicted = pra_model(pra_x=input_data, pra_A=A, pra_pred_length=output_loc_GT.shape[-2], pra_teacher_forcing_ratio=0, pra_teacher_location=output_loc_GT) # (N, C, T, V)=(N, 2, 6, 120)
             ########################################################
             # Compute details for training
             ########################################################
