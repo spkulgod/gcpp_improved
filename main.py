@@ -79,6 +79,7 @@ def display_result(pra_results, pra_pref='Train_epoch'):
         min_it = iteration
     my_print('ADE mean={}'.format(mean_ade))
     my_print('ADE min={},  Iteration ={}'.format(min_ade,min_it))
+    my_print('FDE={}'.format(overall_ade_tim[-1]))
     return overall_loss_time
 
 
@@ -172,7 +173,7 @@ def train_model(pra_model, pra_data_loader, pra_optimizer, pra_epoch_log):
             A = A.float().to(dev) # shape(N,3,120,120) 
 
             #print("A shape::",A.shape,"input shape",input_data.shape)
-            predicted = pra_model(pra_x=input_data, pra_A=A, pra_pred_length=output_loc_GT.shape[-2], pra_teacher_forcing_ratio=0, pra_teacher_location=output_loc_GT) # (N, C, T, V)=(N, 2, 6, 120)
+            predicted = pra_model(pra_x=input_data, pra_A=A, pra_pred_length=output_loc_GT.shape[-2], pra_teacher_forcing_ratio=1, pra_teacher_location=output_loc_GT) # (N, C, T, V)=(N, 2, 6, 120)
 
 
             ########################################################
