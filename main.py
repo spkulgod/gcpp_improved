@@ -165,7 +165,7 @@ def train_model(pra_model, pra_data_loader, pra_optimizer, pra_epoch_log):
         data, no_norm_loc_data, object_type = preprocess_data(ori_data, rescale_xy)
         mid = int(data.shape[-2]/2)
         #print("A shape1 ::",A.shape)
-        for now_history_frames in range(mid,mid+1):  ### put just a no.
+        for now_history_frames in range(1,data.shape[-2]):  ### put just a no.
             input_data = data[:,:,:now_history_frames,:] # (N, C, T, V)=(N, 4, 6, 120)
             output_loc_GT = data[:,:2,now_history_frames:,:] # (N, C, T, V)=(N, 2, 6, 120)  #future-gt
             output_mask = data[:,-1:,now_history_frames:,:] # (N, C, T, V)=(N, 1, 6, 120)
@@ -173,7 +173,7 @@ def train_model(pra_model, pra_data_loader, pra_optimizer, pra_epoch_log):
             A = A.float().to(dev) # shape(N,3,120,120) 
 
             #print("A shape::",A.shape,"input shape",input_data.shape)
-            predicted = pra_model(pra_x=input_data, pra_A=A, pra_pred_length=output_loc_GT.shape[-2], pra_teacher_forcing_ratio=1, pra_teacher_location=output_loc_GT) # (N, C, T, V)=(N, 2, 6, 120)
+            predicted = pra_model(pra_x=input_data, pra_A=A, pra_pred_length=output_loc_GT.shape[-2], pra_teacher_forcing_ratio=0, pra_teacher_location=output_loc_GT) # (N, C, T, V)=(N, 2, 6, 120)
 
 
             ########################################################
