@@ -45,7 +45,7 @@ class Graph():
 		AD = np.dot(A, Dn)  #eq5
 		A = np.zeros((self.max_hop + 1, self.num_node, self.num_node))
 		for i in range(self.max_hop + 1):
-			A[i] = np.linalg.matrix_power(AD, i)  
+			A[i] = np.linalg.matrix_power(AD, i+1)  
 
 # 		valid_hop = range(0, self.max_hop + 1)
 # 		A = np.zeros((len(valid_hop), self.num_node, self.num_node))
