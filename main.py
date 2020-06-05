@@ -331,7 +331,7 @@ def test_model(pra_model, pra_data_loader):
             ori_output_last_loc = no_norm_loc_data[:,:2,history_frames-1:history_frames,:]
 
             A = A.float().to(dev)
-            predicted = pra_model(pra_x=input_data, pra_A=A, pra_pred_length=future_frames, pra_teacher_forcing_ratio=1, pra_teacher_location=None) # (N, C, T, V)=(N, 2, 6, 120)
+            predicted = pra_model(pra_x=input_data, pra_A=A, pra_pred_length=future_frames, pra_teacher_forcing_ratio=0, pra_teacher_location=None) # (N, C, T, V)=(N, 2, 6, 120)
             predicted = predicted *rescale_xy 
 
             for ind in range(1, predicted.shape[-2]):
