@@ -100,4 +100,3 @@ class Graph():
 # 			A[i][self.hop_dis == hop] = AD[self.hop_dis == hop]
 # 		return A
 
-
