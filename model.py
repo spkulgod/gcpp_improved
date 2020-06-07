@@ -63,7 +63,6 @@ class Model(nn.Module):
     def reshape_from_lstm(self, predicted):
         # predicted (N*V, T, C)
         M, NV, T, C = predicted.size()
-        print("predicted size",predicted.size())
         now_feat = predicted.view(M,-1, self.num_node, T, self.out_dim_per_node) # (M,N, T, V, C) -> (M, N, C, T, V) [(M , N, V, T, C)]
         now_feat = now_feat.permute(0,1, 4, 3, 2).contiguous() # (M, N, C, T, V)
         return now_feat
@@ -100,7 +99,6 @@ class Model(nn.Module):
 
         now_predict = now_predict_car
         
-        print("predict shape",now_predict.shape)
         return now_predict, mean_car, std_car,prob_car
 
 if __name__ == '__main__':

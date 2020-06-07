@@ -67,7 +67,7 @@ class VAE(nn.Module):
         prob_list = np.exp(np.array(prob_list))
         prob_list = prob_list/np.sum(prob_list,axis=0)
         prob_list = prob_list.reshape((prob_list.shape[0],-1,self.num_vehicles))
-        
+        prob_list = torch.tensor(prob_list).to(torch.device("cuda:0"))
         return multiple_traj, mu, logvar, prob_list
         
     

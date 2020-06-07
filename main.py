@@ -63,12 +63,12 @@ def display_result(pra_results, pra_pref='Train_epoch'):
 # 	print(type(overall_num_time)) # numpy.ndarray
 # 	print(type(overall_sum_time))  #numpy.ndarray
 
-    overall_loss_time = (overall_sum_time / overall_num_time)
+    overall_loss_time = (overall_sum_time / (overall_num_time+1000))
 # 	overall_num_time=torch.from_numpy(overall_num_time)
 #     overall_ade_time= overall_ade_time.cpu()
 #     overall_ade_time2= overall_ade_time.detach().numpy()
 #     print(type(overall_ade_time))  #shd be numpy.ndarray
-    overall_ade_tim = (overall_ade_time / overall_num_time)
+    overall_ade_tim = (overall_ade_time / (overall_num_time+1000))
 
     overall_log = '|{}|[{}] All_All: {}'.format(datetime.now(), pra_pref, ' '.join(['{:.3f}'.format(x) for x in list(overall_loss_time) + [np.sum(overall_loss_time)]]))
     my_print(overall_log)
@@ -156,7 +156,7 @@ def compute_RMSE_multi(pra_pred, pra_GT, pra_mask,probabilities,pra_error_order=
             
     overall_mask = pra_mask.sum(dim=1).sum(dim=-1) # (N, C, T, V) -> (N, T)=(N, 6)
     overall_num = torch.max(torch.sum(overall_mask), torch.ones(1,).to(dev)) 
-    probabilities = probabilities*pra_mask[:,0,0,:].detach().cpu().numpy()
+    prob_mat = probabilities*pra_mask[:,0,0,:]
     pred = pra_pred*pra_mask[:,:,:,:] # (M,N, C, T, V)=(5,N, 2, 6, 120)
     x2y2 = torch.sum(torch.abs(pred - GT)**pra_error_order, dim=2) # x^2+y^2, (M,N, C, T, V)->(M,N, T, V)=(5,N, 6, 120)
     rmse_mat = x2y2.sum(dim=-2) # (M,N, T, V) -> (M,N,V)
@@ -167,14 +167,14 @@ def compute_RMSE_multi(pra_pred, pra_GT, pra_mask,probabilities,pra_error_order=
         ade_sum=torch.sum(ade_sum,dim=-1) # (N,6)
         
 #     rmse_mat = torch.tensor(rmse_mat)
-    print("rmse_mat shape",rmse_mat.shape)
+#     print("rmse_mat shape",rmse_mat.shape)
     min_args = torch.argmin(rmse_mat,dim=0)  #  (N,V)
 #     print("min args shape",min_args.shape)
     rmse_mat = rmse_mat.gather(0,min_args.view(-1,min_args.shape[0],min_args.shape[1]))
-#     prob_mat = torch.take_along_axis(probabilities, torch.expand_dims(min_args, axis=0), axis=0).squeeze(axis=0)
+    prob_mat = prob_mat.gather(0,min_args.view(-1,min_args.shape[0],min_args.shape[1]))
     min_rmse = torch.sum(rmse_mat)/overall_num
-#     min_prob = torch.sum(prob_mat)/overall_num
-    min_prob = 1
+    min_prob = torch.sum(prob_mat)/overall_num
+#     min_prob = 1
     
     return min_rmse, x2y2, ade_sum, min_prob
 
@@ -211,7 +211,7 @@ def train_model(pra_model, pra_data_loader, pra_optimizer, pra_epoch_log):
             # (N, T), (N, T)
             min_rmse, _,_,prob = compute_RMSE_multi(predicted, output_loc_GT, output_mask, prob_list,pra_error_order=1)
             KL_loss = -0.5 * (1 + torch.log(std.pow(2)) - mean.pow(2) - std.pow(2)).mean()
-            p_loss = -np.log(prob) 
+            p_loss = -torch.log(prob) 
             # overall_loss
             total_loss = min_rmse + KL_loss + p_loss#(1,)
 
@@ -279,7 +279,7 @@ def val_model(pra_model, pra_data_loader,train_it):
             # overall_sum_time, overall_num, x2y2 = compute_RMSE(predicted, output_loc_GT, output_mask)		
             min_rmse, x2y2,ade_sum, prob = compute_RMSE_multi(predicted, ori_output_loc_GT, output_mask,prob_list)		
             # all_overall_sum_list.extend(overall_sum_time.detach().cpu().numpy())
-            all_overall_num_list.extend(overall_num.detach().cpu().numpy())
+#             all_overall_num_list.extend(overall_num.detach().cpu().numpy())
             #all_overall_ade_list.extend(overall_num.detach().cpu().numpy())
             # x2y2 (N, 6, 39)
             now_x2y2 = x2y2.detach().cpu().numpy()
@@ -290,8 +290,8 @@ def val_model(pra_model, pra_data_loader,train_it):
             ### car dist
             car_mask = (((cat_mask==1)+(cat_mask==2))>0).float().to(dev)
             car_mask = output_mask * car_mask
-            car_sum_time, car_num, car_x2y2, car_ade,_,_ = compute_RMSE_multi(predicted, ori_output_loc_GT, car_mask,prob_list)		
-            all_car_num_list.extend(car_num.detach().cpu().numpy())
+            car_min_rmse, car_x2y2, car_ade,_ = compute_RMSE_multi(predicted, ori_output_loc_GT, car_mask,prob_list)		
+#             all_car_num_list.extend(car_num.detach().cpu().numpy())
             # x2y2 (N, 6, 39)
             car_x2y2 = car_x2y2.detach().cpu().numpy()
             car_x2y2 = car_x2y2.sum(axis=-1)
@@ -321,7 +321,7 @@ def val_model(pra_model, pra_data_loader,train_it):
 #             all_bike_ade_list.extend(bike_ade)
 
 
-    result_car = display_result([np.array(all_car_sum_list), np.array(all_car_num_list) , np.array(all_car_ade_list), train_it ], pra_pref='car')
+#     result_car = display_result([np.array(all_car_sum_list), np.array(all_car_num_list) , np.array(all_car_ade_list), train_it ], pra_pref='car')
 #     result_human =display_result([np.array(all_human_sum_list),np.array(all_human_num_list),np.array(all_human_ade_list)],pra_pref='human')
 #     result_bike = display_result([np.array(all_bike_sum_list), np.array(all_bike_num_list), np.array(all_bike_ade_list)], pra_pref='bike')
 
@@ -329,9 +329,9 @@ def val_model(pra_model, pra_data_loader,train_it):
 # 	result_human_ade = display_result([np.array(all_human_ade_list), np.array(all_human_num_list)], pra_pref='human')
 # 	result_bike_ade = display_result([np.array(all_bike_ade_list), np.array(all_bike_num_list)], pra_pref='bike')
 
-    result = result_car #to change only for vehicles
-    overall_log = '|{}|[{}] All_All: {}'.format(datetime.now(), 'WS', ' '.join(['{:.3f}'.format(x) for x in list(result) + [np.sum(result)]]))
-    my_print(overall_log)
+#     result = result_car #to change only for vehicles
+#     overall_log = '|{}|[{}] All_All: {}'.format(datetime.now(), 'WS', ' '.join(['{:.3f}'.format(x) for x in list(result) + [np.sum(result)]]))
+#     my_print(overall_log)
 
     all_overall_sum_list = np.array(all_overall_sum_list)
     all_overall_num_list = np.array(all_overall_num_list)
