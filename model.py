@@ -21,6 +21,7 @@ class Model(nn.Module):
 #         print(
         temporal_kernel_size = 5 #9 #5 # 3
         kernel_size = (temporal_kernel_size, spatial_kernel_size)
+        self.num_traj = 5
 
         # best
         self.st_gcn_networks = nn.ModuleList((
@@ -41,9 +42,9 @@ class Model(nn.Module):
 
         self.num_node = num_node = self.graph.num_node
         self.out_dim_per_node = out_dim_per_node = 2 #(x, y) coordinate
-        self.seq2seq_car = Seq2Seq(input_size=(64), hidden_size=out_dim_per_node, num_layers=3, dropout=0.5, isCuda=True)
-        self.seq2seq_human = Seq2Seq(input_size=(64), hidden_size=out_dim_per_node, num_layers=3, dropout=0.5, isCuda=True)
-        self.seq2seq_bike = Seq2Seq(input_size=(64), hidden_size=out_dim_per_node, num_layers=3, dropout=0.5, isCuda=True)
+        self.seq2seq_car = Seq2Seq(input_size=(64), hidden_size=out_dim_per_node, num_layers=3, num_vehicles=graph_args['num_node'], dropout=0.5, isCuda=True, num_traj = self.num_traj)
+#         self.seq2seq_human = Seq2Seq(input_size=(64), hidden_size=out_dim_per_node, num_layers=3, dropout=0.5, isCuda=True)
+#         self.seq2seq_bike = Seq2Seq(input_size=(64), hidden_size=out_dim_per_node, num_layers=3, dropout=0.5, isCuda=True)
 
 
     def reshape_for_lstm(self, feature):
@@ -87,8 +88,9 @@ class Model(nn.Module):
             pra_teacher_location = self.reshape_for_lstm(pra_teacher_location)
 
         # now_predict.shape = (N, T, V*C)
-        now_predict_car = self.seq2seq_car(in_data=graph_conv_feature, last_location=last_position[:,-1:,:], pred_length=pra_pred_length, teacher_forcing_ratio=pra_teacher_forcing_ratio, teacher_location=pra_teacher_location)
-        now_predict_car = self.reshape_from_lstm(now_predict_car) # (N, C, T, V)
+        now_predict_car,mean_car, std_car,prob_car = self.seq2seq_car(in_data=graph_conv_feature, last_location=last_position[:,-1:,:], pred_length=pra_pred_length, teacher_forcing_ratio=pra_teacher_forcing_ratio, teacher_location=pra_teacher_location)
+        for i in range(self.num_traj):
+            now_predict_car[i] = self.reshape_from_lstm(now_predict_car[i]) # (N, C, T, V)
 
 #         now_predict_human = self.seq2seq_human(in_data=graph_conv_feature, last_location=last_position[:,-1:,:], pred_length=pra_pred_length, teacher_forcing_ratio=pra_teacher_forcing_ratio, teacher_location=pra_teacher_location)
 #         now_predict_human = self.reshape_from_lstm(now_predict_human) # (N, C, T, V)
@@ -98,7 +100,7 @@ class Model(nn.Module):
 
         now_predict = now_predict_car
 
-        return now_predict 
+        return now_predict, mean_car, std_car,prob_car
 
 if __name__ == '__main__':
     model = Model(in_channels=3, pred_length=6, graph_args={}, edge_importance_weighting=True)

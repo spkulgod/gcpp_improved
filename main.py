@@ -149,6 +149,36 @@ def compute_RMSE(pra_pred, pra_GT, pra_mask, pra_error_order=2):
 
     return overall_sum_time, overall_num, x2y2,ade_sum
 
+def compute_RMSE_multi(pra_pred, pra_GT, pra_mask,probabilities,pra_error_order=2):
+    GT = pra_GT * pra_mask # (N, C, T, V)=(N, 2, 6, 120) 
+    min_rmse = np.inf
+    min_prob = 1
+    rmse_mat = []
+            
+    overall_mask = pra_mask.sum(dim=1).sum(dim=-1) # (N, C, T, V) -> (N, T)=(N, 6)
+    overall_num = torch.max(torch.sum(overall_mask), torch.ones(1,).to(dev)) 
+    probabilities = probabilities*pra_mask[:,0,0,:].detach().cpu().numpy()
+    
+    for i in range (len(pra_pred)):
+        pred = pra_pred[i] * pra_mask[:,:,:,:] # (N, C, T, V)=(N, 2, 6, 120)
+        x2y2 = torch.sum(torch.abs(pred - GT)**pra_error_order, dim=1) # x^2+y^2, (N, C, T, V)->(N, T, V)=(N, 6, 120)
+
+        rmse_mat.append(x2y2.sum(dim=-2).detach().cpu().numpy()) # (N, T, V) -> (N, V)
+
+        ade_sum=torch.sqrt(x2y2) # (N,T,V)
+        ade_sum=torch.sum(ade_sum,dim=-1) # (N,6)
+        
+    rmse_mat = torch.tensor(rmse_mat)
+    print("rmse_mat shape",rmse_mat.shape)
+    min_args = torch.argmin(rmse_mat,dim=0)  #  (N,V)
+#     print("min args shape",min_args.shape)
+    rmse_mat = rmse_mat.gather(0,min_args.view(-1,min_args.shape[0],min_args.shape[1]))
+#     prob_mat = torch.take_along_axis(probabilities, torch.expand_dims(min_args, axis=0), axis=0).squeeze(axis=0)
+    min_rmse = torch.sum(rmse_mat)/overall_num
+#     min_prob = torch.sum(prob_mat)/overall_num
+    min_prob = 1
+    
+    return min_rmse, x2y2, ade_sum, min_prob
 
 def train_model(pra_model, pra_data_loader, pra_optimizer, pra_epoch_log):
     # pra_model.to(dev)
@@ -173,7 +203,7 @@ def train_model(pra_model, pra_data_loader, pra_optimizer, pra_epoch_log):
             A = A.float().to(dev) # shape(N,3,120,120) 
 
             #print("A shape::",A.shape,"input shape",input_data.shape)
-            predicted = pra_model(pra_x=input_data, pra_A=A, pra_pred_length=output_loc_GT.shape[-2], pra_teacher_forcing_ratio=0, pra_teacher_location=output_loc_GT) # (N, C, T, V)=(N, 2, 6, 120)
+            predicted, mean, std,prob_list = pra_model(pra_x=input_data, pra_A=A, pra_pred_length=output_loc_GT.shape[-2], pra_teacher_forcing_ratio=1, pra_teacher_location=output_loc_GT) # (N, C, T, V)=(N, 2, 6, 120)
 
 
             ########################################################
@@ -181,9 +211,11 @@ def train_model(pra_model, pra_data_loader, pra_optimizer, pra_epoch_log):
             ########################################################
             # We use abs to compute loss to backward update weights
             # (N, T), (N, T)
-            overall_sum_time, overall_num, _,_ = compute_RMSE(predicted, output_loc_GT, output_mask, pra_error_order=1)
+            min_rmse, _,_,prob = compute_RMSE_multi(predicted, output_loc_GT, output_mask, prob_list,pra_error_order=1)
+            KL_loss = -0.5 * (1 + torch.log(std.pow(2)) - mean.pow(2) - std.pow(2)).mean()
+            p_loss = -np.log(prob) 
             # overall_loss
-            total_loss = torch.sum(overall_sum_time) / torch.max(torch.sum(overall_num), torch.ones(1,).to(dev)) #(1,)
+            total_loss = min_rmse + KL_loss + p_loss#(1,)
 
             now_lr = [param_group['lr'] for param_group in pra_optimizer.param_groups][0]
             print('|{}|{:>20}|\tIteration:{:>5}|\tLoss:{:.8f}|lr: {}|'.format(datetime.now(), pra_epoch_log, iteration, total_loss.data.item(),now_lr))
@@ -233,20 +265,21 @@ def val_model(pra_model, pra_data_loader,train_it):
             cat_mask = ori_data[:,2:3, now_history_frames:, :] # (N, C, T, V)=(N, 1, 6, 120)
 
             A = A.float().to(dev)
-            predicted = pra_model(pra_x=input_data, pra_A=A, pra_pred_length=output_loc_GT.shape[-2], pra_teacher_forcing_ratio=0, pra_teacher_location=output_loc_GT) # (N, C, T, V)=(N, 2, 6, 120)
+            predicted,_,_,prob_list = pra_model(pra_x=input_data, pra_A=A, pra_pred_length=output_loc_GT.shape[-2], pra_teacher_forcing_ratio=0, pra_teacher_location=output_loc_GT) # (N, C, T, V)=(N, 2, 6, 120)
             ########################################################
             # Compute details for training
             ########################################################
-            predicted = predicted*rescale_xy
-            # output_loc_GT = output_loc_GT*rescale_xy
-
-            for ind in range(1, predicted.shape[-2]):
-                predicted[:,:,ind] = torch.sum(predicted[:,:,ind-1:ind+1], dim=-2)
-            predicted += ori_output_last_loc  #traj
-
+            
+            for i in range(len(predicted)):
+                predicted[i] = predicted[i]*rescale_xy
+                # output_loc_GT = output_loc_GT*rescale_xy
+                for ind in range(1, predicted[i].shape[-2]):
+                    predicted[i][:,:,ind] = torch.sum(predicted[i][:,:,ind-1:ind+1], dim=-2)
+                predicted[i] += ori_output_last_loc  #traj
+ 
             ### overall dist
             # overall_sum_time, overall_num, x2y2 = compute_RMSE(predicted, output_loc_GT, output_mask)		
-            overall_sum_time, overall_num, x2y2,ade_sum = compute_RMSE(predicted, ori_output_loc_GT, output_mask)		
+            min_rmse, x2y2,ade_sum, prob = compute_RMSE_multi(predicted, ori_output_loc_GT, output_mask,prob_list)		
             # all_overall_sum_list.extend(overall_sum_time.detach().cpu().numpy())
             all_overall_num_list.extend(overall_num.detach().cpu().numpy())
             #all_overall_ade_list.extend(overall_num.detach().cpu().numpy())
@@ -259,7 +292,7 @@ def val_model(pra_model, pra_data_loader,train_it):
             ### car dist
             car_mask = (((cat_mask==1)+(cat_mask==2))>0).float().to(dev)
             car_mask = output_mask * car_mask
-            car_sum_time, car_num, car_x2y2, car_ade = compute_RMSE(predicted, ori_output_loc_GT, car_mask)		
+            car_sum_time, car_num, car_x2y2, car_ade,_,_ = compute_RMSE_multi(predicted, ori_output_loc_GT, car_mask,prob_list)		
             all_car_num_list.extend(car_num.detach().cpu().numpy())
             # x2y2 (N, 6, 39)
             car_x2y2 = car_x2y2.detach().cpu().numpy()
