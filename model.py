@@ -62,9 +62,10 @@ class Model(nn.Module):
 
     def reshape_from_lstm(self, predicted):
         # predicted (N*V, T, C)
-        NV, T, C = predicted.size()
-        now_feat = predicted.view(-1, self.num_node, T, self.out_dim_per_node) # (N, T, V, C) -> (N, C, T, V) [(N, V, T, C)]
-        now_feat = now_feat.permute(0, 3, 2, 1).contiguous() # (N, C, T, V)
+        M, NV, T, C = predicted.size()
+        print("predicted size",predicted.size())
+        now_feat = predicted.view(M,-1, self.num_node, T, self.out_dim_per_node) # (M,N, T, V, C) -> (M, N, C, T, V) [(M , N, V, T, C)]
+        now_feat = now_feat.permute(0,1, 4, 3, 2).contiguous() # (M, N, C, T, V)
         return now_feat
 
     def forward(self, pra_x, pra_A, pra_pred_length, pra_teacher_forcing_ratio=0, pra_teacher_location=None):
@@ -89,8 +90,7 @@ class Model(nn.Module):
 
         # now_predict.shape = (N, T, V*C)
         now_predict_car,mean_car, std_car,prob_car = self.seq2seq_car(in_data=graph_conv_feature, last_location=last_position[:,-1:,:], pred_length=pra_pred_length, teacher_forcing_ratio=pra_teacher_forcing_ratio, teacher_location=pra_teacher_location)
-        for i in range(self.num_traj):
-            now_predict_car[i] = self.reshape_from_lstm(now_predict_car[i]) # (N, C, T, V)
+        now_predict_car = self.reshape_from_lstm(now_predict_car) # (N, C, T, V)
 
 #         now_predict_human = self.seq2seq_human(in_data=graph_conv_feature, last_location=last_position[:,-1:,:], pred_length=pra_pred_length, teacher_forcing_ratio=pra_teacher_forcing_ratio, teacher_location=pra_teacher_location)
 #         now_predict_human = self.reshape_from_lstm(now_predict_human) # (N, C, T, V)
@@ -99,7 +99,8 @@ class Model(nn.Module):
 #         now_predict_bike = self.reshape_from_lstm(now_predict_bike) # (N, C, T, V)
 
         now_predict = now_predict_car
-
+        
+        print("predict shape",now_predict.shape)
         return now_predict, mean_car, std_car,prob_car
 
 if __name__ == '__main__':

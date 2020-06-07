@@ -67,6 +67,7 @@ class VAE(nn.Module):
         prob_list = np.exp(np.array(prob_list))
         prob_list = prob_list/np.sum(prob_list,axis=0)
         prob_list = prob_list.reshape((prob_list.shape[0],-1,self.num_vehicles))
+        
         return multiple_traj, mu, logvar, prob_list
         
     
@@ -117,7 +118,7 @@ class Seq2Seq(nn.Module):
 #         mean = 0
 #         std_dev = 0
         decoder_input = last_location
-        output_trajs = []
+        output_trajs = torch.tensor(np.zeros((self.num_traj, batch_size, self.pred_length, out_dim)))
         
         for i in range(self.num_traj):
             outputs = torch.zeros(batch_size, self.pred_length, out_dim)
@@ -132,7 +133,7 @@ class Seq2Seq(nn.Module):
                 teacher_force = np.random.random() < teacher_forcing_ratio
                 decoder_input = (teacher_location[:,t:t+1] if (type(teacher_location) is not type(None)) and teacher_force else now_out)
                 # decoder_input = now_out
-            output_trajs.append(outputs)
+            output_trajs[i] = outputs
         return output_trajs,mean,std_dev,prob_list
 
 ###################################################

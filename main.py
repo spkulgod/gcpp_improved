@@ -153,22 +153,20 @@ def compute_RMSE_multi(pra_pred, pra_GT, pra_mask,probabilities,pra_error_order=
     GT = pra_GT * pra_mask # (N, C, T, V)=(N, 2, 6, 120) 
     min_rmse = np.inf
     min_prob = 1
-    rmse_mat = []
             
     overall_mask = pra_mask.sum(dim=1).sum(dim=-1) # (N, C, T, V) -> (N, T)=(N, 6)
     overall_num = torch.max(torch.sum(overall_mask), torch.ones(1,).to(dev)) 
     probabilities = probabilities*pra_mask[:,0,0,:].detach().cpu().numpy()
+    pred = pra_pred.to(dev)*pra_mask[:,:,:,:] # (M,N, C, T, V)=(5,N, 2, 6, 120)
+    x2y2 = torch.sum(torch.abs(pred - GT)**pra_error_order, dim=2) # x^2+y^2, (M,N, C, T, V)->(M,N, T, V)=(5,N, 6, 120)
+    rmse_mat = x2y2.sum(dim=-2) # (M,N, T, V) -> (M,N,V)
     
     for i in range (len(pra_pred)):
-        pred = pra_pred[i] * pra_mask[:,:,:,:] # (N, C, T, V)=(N, 2, 6, 120)
-        x2y2 = torch.sum(torch.abs(pred - GT)**pra_error_order, dim=1) # x^2+y^2, (N, C, T, V)->(N, T, V)=(N, 6, 120)
-
-        rmse_mat.append(x2y2.sum(dim=-2).detach().cpu().numpy()) # (N, T, V) -> (N, V)
 
         ade_sum=torch.sqrt(x2y2) # (N,T,V)
         ade_sum=torch.sum(ade_sum,dim=-1) # (N,6)
         
-    rmse_mat = torch.tensor(rmse_mat)
+#     rmse_mat = torch.tensor(rmse_mat)
     print("rmse_mat shape",rmse_mat.shape)
     min_args = torch.argmin(rmse_mat,dim=0)  #  (N,V)
 #     print("min args shape",min_args.shape)
