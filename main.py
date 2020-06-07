@@ -157,7 +157,7 @@ def compute_RMSE_multi(pra_pred, pra_GT, pra_mask,probabilities,pra_error_order=
     overall_mask = pra_mask.sum(dim=1).sum(dim=-1) # (N, C, T, V) -> (N, T)=(N, 6)
     overall_num = torch.max(torch.sum(overall_mask), torch.ones(1,).to(dev)) 
     probabilities = probabilities*pra_mask[:,0,0,:].detach().cpu().numpy()
-    pred = pra_pred.to(dev)*pra_mask[:,:,:,:] # (M,N, C, T, V)=(5,N, 2, 6, 120)
+    pred = pra_pred*pra_mask[:,:,:,:] # (M,N, C, T, V)=(5,N, 2, 6, 120)
     x2y2 = torch.sum(torch.abs(pred - GT)**pra_error_order, dim=2) # x^2+y^2, (M,N, C, T, V)->(M,N, T, V)=(5,N, 6, 120)
     rmse_mat = x2y2.sum(dim=-2) # (M,N, T, V) -> (M,N,V)
     

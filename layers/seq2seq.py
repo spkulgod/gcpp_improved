@@ -118,7 +118,7 @@ class Seq2Seq(nn.Module):
 #         mean = 0
 #         std_dev = 0
         decoder_input = last_location
-        output_trajs = torch.tensor(np.zeros((self.num_traj, batch_size, self.pred_length, out_dim)))
+        output_trajs = torch.tensor(np.zeros((self.num_traj, batch_size, self.pred_length, out_dim))).to(torch.device("cuda:0"))
         
         for i in range(self.num_traj):
             outputs = torch.zeros(batch_size, self.pred_length, out_dim)
