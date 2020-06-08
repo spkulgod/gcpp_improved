@@ -501,7 +501,7 @@ if __name__ == '__main__':
 
     # train and evaluate model
 #     run_trainval(model, pra_traindata_path='./nuscenes_pkl/train_data.pkl', pra_testdata_path='./nuscenes_pkl/test_data.pkl')
-    run_trainval(model, pra_traindata_path='./dest/train_data.pkl', pra_testdata_path='./dest/test_data.pkl')
+    run_trainval(model, pra_traindata_path='./Dataset2/train_data.pkl', pra_testdata_path='./Dataset2/test_data.pkl')
     
     # pretrained_model_path = './trained_models/model_epoch_0016.pt'
     # model = my_load_model(model, pretrained_model_path)

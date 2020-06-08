@@ -5,7 +5,7 @@ from torch.autograd import Variable
 
 from layers.graph import Graph
 from layers.graph_conv_block import Graph_Conv_Block
-from layers.seq2seq import Seq2Seq, EncoderRNN
+from layers.seq2seqmulti import Seq2Seq, EncoderRNN
 import numpy as np 
 
 class Model(nn.Module):
