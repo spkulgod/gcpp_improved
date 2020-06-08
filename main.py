@@ -56,31 +56,54 @@ def my_print(pra_content):
 
 def display_result(pra_results, pra_pref='Train_epoch'):
     global min_it,min_ade
-    all_overall_sum_list, all_overall_num_list, all_overall_ade_list,iteration = pra_results
+    all_overall_sum_list, all_overall_num_list, all_overall_ade_list,all_overall_fde_list,all_overall_fde_num_list,iteration = pra_results
     overall_sum_time = np.sum(all_overall_sum_list**0.5, axis=0) #  t
     overall_num_time = np.sum(all_overall_num_list, axis=0) # t 
-    overall_ade_time =  np.sum(all_overall_ade_list, axis=0) #t
-# 	print(type(overall_num_time)) # numpy.ndarray
-# 	print(type(overall_sum_time))  #numpy.ndarray
+    overall_ade_time = np.sum(all_overall_ade_list, axis=0) #t
+    overall_fde_time = np.sum(all_overall_fde_list, axis=0) #t
+    overall_fde_num_time = np.sum(all_overall_fde_num_list, axis=0) #t
 
-    overall_loss_time = (overall_sum_time / (overall_num_time+1000))
-# 	overall_num_time=torch.from_numpy(overall_num_time)
-#     overall_ade_time= overall_ade_time.cpu()
-#     overall_ade_time2= overall_ade_time.detach().numpy()
-#     print(type(overall_ade_time))  #shd be numpy.ndarray
-    overall_ade_tim = (overall_ade_time / (overall_num_time+1000))
+#     overall_loss_time = (overall_sum_time / (overall_num_time+1000))
+    overall_ade = (overall_ade_time / (overall_num_time))
+    overall_fde = (overall_fde_time / (overall_fde_num_time))
 
-    overall_log = '|{}|[{}] All_All: {}'.format(datetime.now(), pra_pref, ' '.join(['{:.3f}'.format(x) for x in list(overall_loss_time) + [np.sum(overall_loss_time)]]))
-    my_print(overall_log)
-    my_print('ADE={}'.format(overall_ade_tim))
-    mean_ade = np.mean(overall_ade_tim)
+#     overall_log = '|{}|[{}] All_All: {}'.format(datetime.now(), pra_pref, ' '.join(['{:.3f}'.format(x) for x in list(overall_loss_time) + [np.sum(overall_loss_time)]]))
+#     my_print(overall_log)
+    my_print('ADE={}'.format(overall_ade))
+    mean_ade = overall_ade
     if(mean_ade<min_ade):
         min_ade = mean_ade
         min_it = iteration
     my_print('ADE mean={}'.format(mean_ade))
     my_print('ADE min={},  Iteration ={}'.format(min_ade,min_it))
-    my_print('FDE={}'.format(overall_ade_tim[-1]))
-    return overall_loss_time
+    my_print('FDE={}'.format(overall_fde))
+    return overall_ade, overall_fde
+
+
+
+# def display_result_multi(pra_results, pra_pref='Train_epoch'):
+#     global min_it,min_ade
+#     all_overall_sum_list, all_overall_num_list, all_overall_ade_list,iteration = pra_results
+#     overall_sum_time = np.sum(all_overall_sum_list**0.5, axis=0) #  t
+#     overall_num_time = np.sum(all_overall_num_list, axis=0) # t 
+#     overall_ade_time =  np.sum(all_overall_ade_list, axis=0) #t
+#     overall_ade_batch=np.sum(all_overall_ade_list,
+
+#     overall_loss_time = (overall_sum_time / (overall_num_time+1000))
+#     overall_ade_tim = (overall_ade_time / (overall_num_time+1000))
+
+#     overall_log = '|{}|[{}] All_All: {}'.format(datetime.now(), pra_pref, ' '.join(['{:.3f}'.format(x) for x in list(overall_loss_time) + [np.sum(overall_loss_time)]]))
+#     my_print(overall_log)
+#     my_print('ADE={}'.format(overall_ade_tim))
+#     mean_ade = np.mean(overall_ade_tim)
+#     if(mean_ade<min_ade):
+#         min_ade = mean_ade
+#         min_it = iteration
+#     my_print('ADE mean={}'.format(mean_ade))
+#     my_print('ADE min={},  Iteration ={}'.format(min_ade,min_it))
+#     my_print('FDE={}'.format(overall_ade_tim[-1]))
+#     return overall_loss_time
+
 
 
 def my_save_model(pra_model, pra_epoch):
@@ -156,27 +179,49 @@ def compute_RMSE_multi(pra_pred, pra_GT, pra_mask,probabilities,pra_error_order=
             
     overall_mask = pra_mask.sum(dim=1).sum(dim=-1) # (N, C, T, V) -> (N, T)=(N, 6)
     overall_num = torch.max(torch.sum(overall_mask), torch.ones(1,).to(dev)) 
-    prob_mat = probabilities*pra_mask[:,0,0,:]
-    pred = pra_pred*pra_mask[:,:,:,:] # (M,N, C, T, V)=(5,N, 2, 6, 120)
-    x2y2 = torch.sum(torch.abs(pred - GT)**pra_error_order, dim=2) # x^2+y^2, (M,N, C, T, V)->(M,N, T, V)=(5,N, 6, 120)
-    rmse_mat = x2y2.sum(dim=-2) # (M,N, T, V) -> (M,N,V)
     
-    for i in range (len(pra_pred)):
-
-        ade_sum=torch.sqrt(x2y2) # (N,T,V)
-        ade_sum=torch.sum(ade_sum,dim=-1) # (N,6)
-        
-#     rmse_mat = torch.tensor(rmse_mat)
-#     print("rmse_mat shape",rmse_mat.shape)
+    prob_mat = probabilities*pra_mask[:,0,0,:] #( Traj, batch, vehicles) ( 5, 128, 50)
+    prob_max=torch.argsort(prob_mat, dim=0, descending=True) # 5 x 128 x 50
+#     print('prob max shape',prob_max.shape)
+#     print('prob all traj one batch one veh',prob_mat[:,1,0])
+    
+    pred = pra_pred*pra_mask[:,:,:,:] # (M,N, C, T, V)=(5,N, 2, 12, 120)
+#     print('mask-shape',pra_mask.shape)  #128 1 12 50
+#     print('pred-shape',pred.shape)  # 5 128 2 12 50
+    x2y2 = torch.sum(torch.abs(pred - GT)**pra_error_order, dim=2) # x^2+y^2, (M,N, C, T, V)->(M,N, T, V)=(5,N, 12, 120)
+    rmse_mat = x2y2.sum(dim=-2) # (M,N, T, V) -> (M,N,V)
+    ade_sqrt=torch.sqrt(x2y2)  # (5,N, 12, 50)
+    
+    fde_mat_full = ade_sqrt[:,:,-1,:] #5,N,50
+    fde_min,_ = torch.min(fde_mat_full,dim=0) # N 50
+    print("fde min shape",fde_min.shape)
+    fde_batch_sum = fde_min.sum()
+    
+#     ade_sqrt_prob=ade_sqrt.permute(2,0,1,3)*prob_mat #(12,5,N,50)
+    ade_sum_time=ade_sqrt.sum(dim=2) # (5 N 50)
+    ade_sum_min,_ = torch.min(ade_sum_time,dim=0) #(N,50)
+    ade_batch_sum = ade_sum_min.sum()
+    
+#     ade_sum_traj=ade_sqrt_prob.sum(dim=1) # (12,N,50)
+#     ade_sum_vehicles=ade_sum_traj.sum(dim=2).permute(1,0) # (12,N) -> (N,12)
+                             
+    
+#     weighted_ade=ade_sum_time*prob_mat  # ( 5 N 50)
+#     sum_traj_ade=weighted_ade.sum(dim=0) #( N 50)
+#     sum_ade= sum_traj_ade.sum() # one value # mean shd be taken later for n*50 elements
+#     print(sum_ade)
+#     print('mean ade',sum_ade)
+    
     min_args = torch.argmin(rmse_mat,dim=0)  #  (N,V)
 #     print("min args shape",min_args.shape)
     rmse_mat = rmse_mat.gather(0,min_args.view(-1,min_args.shape[0],min_args.shape[1]))
     prob_mat = prob_mat.gather(0,min_args.view(-1,min_args.shape[0],min_args.shape[1]))
     min_rmse = torch.sum(rmse_mat)/overall_num
     min_prob = torch.sum(prob_mat)/overall_num
+    
 #     min_prob = 1
     
-    return min_rmse, x2y2, ade_sum, min_prob
+    return min_rmse,min_prob,x2y2,ade_batch_sum.unsqueeze(0),fde_batch_sum.unsqueeze(0),overall_num.unsqueeze(0),torch.sum(overall_mask[:,-1]).unsqueeze(0)
 
 def train_model(pra_model, pra_data_loader, pra_optimizer, pra_epoch_log):
     # pra_model.to(dev)
@@ -209,7 +254,8 @@ def train_model(pra_model, pra_data_loader, pra_optimizer, pra_epoch_log):
             ########################################################
             # We use abs to compute loss to backward update weights
             # (N, T), (N, T)
-            min_rmse, _,_,prob = compute_RMSE_multi(predicted, output_loc_GT, output_mask, prob_list,pra_error_order=1)
+#             min_rmse, min_prob, x2y2, ade_batch_sum, fde_batch_sum, overall_num ,torch.sum(overall_mask[:,-1])
+            min_rmse,prob,_,_,_,_,_ = compute_RMSE_multi(predicted, output_loc_GT, output_mask, prob_list,pra_error_order=1)
             KL_loss = -0.5 * (1 + torch.log(std.pow(2)) - mean.pow(2) - std.pow(2)).mean()
             p_loss = -torch.log(prob) 
             # overall_loss
@@ -231,11 +277,15 @@ def val_model(pra_model, pra_data_loader,train_it):
     all_overall_sum_list = []
     all_overall_num_list = []
     all_overall_ade_list = []
+    all_overall_fde_list=[]
+    all_overall_fde_num_list=[]
 
 
     all_car_sum_list = []
     all_car_ade_list = []
     all_car_num_list = []
+    all_car_fde_list=[]
+    all_car_fde_num_list=[]
 
     all_human_sum_list = []
     all_human_num_list = []
@@ -274,29 +324,41 @@ def val_model(pra_model, pra_data_loader,train_it):
                 for ind in range(1, predicted[i].shape[-2]):
                     predicted[i][:,:,ind] = torch.sum(predicted[i][:,:,ind-1:ind+1], dim=-2)
                 predicted[i] += ori_output_last_loc  #traj
+#             print("predicted.shape",predicted.shape)
  
             ### overall dist
-            # overall_sum_time, overall_num, x2y2 = compute_RMSE(predicted, output_loc_GT, output_mask)		
-            min_rmse, x2y2,ade_sum, prob = compute_RMSE_multi(predicted, ori_output_loc_GT, output_mask,prob_list)		
+            
+# min_rmse, min_prob, x2y2, ade_batch_sum, fde_batch_sum, overall_num ,torch.sum(overall_mask[:,-1])
+            min_rmse, prob,x2y2,overall_ade,overall_fde,overall_num,fde_num = compute_RMSE_multi(predicted, ori_output_loc_GT, output_mask,prob_list)		
+            
             # all_overall_sum_list.extend(overall_sum_time.detach().cpu().numpy())
-#             all_overall_num_list.extend(overall_num.detach().cpu().numpy())
-            #all_overall_ade_list.extend(overall_num.detach().cpu().numpy())
+            all_overall_num_list.extend(overall_num.detach().cpu().numpy())
+            all_overall_ade_list.extend(overall_ade.detach().cpu().numpy())
+            all_overall_fde_list.extend(overall_fde.detach().cpu().numpy())
+            all_overall_fde_num_list.extend(fde_num.detach().cpu().numpy())
             # x2y2 (N, 6, 39)
             now_x2y2 = x2y2.detach().cpu().numpy()
             now_x2y2 = now_x2y2.sum(axis=-1)
             all_overall_sum_list.extend(now_x2y2)
-            all_overall_ade_list.extend(ade_sum.detach().cpu().numpy())
+#             all_overall_ade_list.extend(ade_one_val.detach().cpu().numpy())
 
             ### car dist
             car_mask = (((cat_mask==1)+(cat_mask==2))>0).float().to(dev)
             car_mask = output_mask * car_mask
-            car_min_rmse, car_x2y2, car_ade,_ = compute_RMSE_multi(predicted, ori_output_loc_GT, car_mask,prob_list)		
-#             all_car_num_list.extend(car_num.detach().cpu().numpy())
+            
+            
+            # min_rmse, min_prob, x2y2, ade_batch_sum, fde_batch_sum, overall_num ,torch.sum(overall_mask[:,-1])
+
+            car_min_rmse,car_prob, car_x2y2, car_ade,car_fde,car_num,car_fde_mask = compute_RMSE_multi(predicted, ori_output_loc_GT, car_mask,prob_list)		
+            all_car_num_list.extend(car_num.detach().cpu().numpy())
+            all_car_ade_list.extend(car_ade.detach().cpu().numpy())
+            all_car_fde_list.extend(car_fde.detach().cpu().numpy())
+            all_car_fde_num_list.extend(car_fde_mask.detach().cpu().numpy())
             # x2y2 (N, 6, 39)
             car_x2y2 = car_x2y2.detach().cpu().numpy()
             car_x2y2 = car_x2y2.sum(axis=-1)
             all_car_sum_list.extend(car_x2y2)
-            all_car_ade_list.extend(car_ade.detach().cpu().numpy())
+
 
 #             ### human dist
 #             human_mask = (cat_mask==3).float().to(dev)
@@ -320,8 +382,9 @@ def val_model(pra_model, pra_data_loader,train_it):
 #             all_bike_sum_list.extend(bike_x2y2)
 #             all_bike_ade_list.extend(bike_ade)
 
-
-#     result_car = display_result([np.array(all_car_sum_list), np.array(all_car_num_list) , np.array(all_car_ade_list), train_it ], pra_pref='car')
+#     print('allcar',np.array(all_car_ade_list).shape)
+#     print('numlist',np.array(all_car_num_list).shape)
+    result_car = display_result([np.array(all_car_sum_list), np.array(all_car_num_list) , np.array(all_car_ade_list),np.array(all_car_fde_list),np.array(all_car_fde_num_list), train_it ], pra_pref='car')
 #     result_human =display_result([np.array(all_human_sum_list),np.array(all_human_num_list),np.array(all_human_ade_list)],pra_pref='human')
 #     result_bike = display_result([np.array(all_bike_sum_list), np.array(all_bike_num_list), np.array(all_bike_ade_list)], pra_pref='bike')
 
@@ -336,8 +399,11 @@ def val_model(pra_model, pra_data_loader,train_it):
     all_overall_sum_list = np.array(all_overall_sum_list)
     all_overall_num_list = np.array(all_overall_num_list)
     all_overall_ade_list = np.array(all_overall_ade_list)
+    all_overall_fde_list = np.array(all_overall_fde_list)
+    all_overall_fde_num_list = np.array(all_overall_fde_num_list)
 
-    return all_overall_sum_list, all_overall_num_list, all_overall_ade_list, train_it
+
+    return all_overall_sum_list, all_overall_num_list, all_overall_ade_list, all_overall_fde_list, all_overall_fde_num_list, train_it
 
 
 
@@ -406,8 +472,8 @@ def run_trainval(pra_model, pra_traindata_path, pra_testdata_path):
     for now_epoch in range(total_epoch):
         all_loader_train = loader_train
 
-        my_print('#######################################Train')
-        train_model(pra_model, all_loader_train, pra_optimizer=optimizer, pra_epoch_log='Epoch:{:>4}/{:>4}'.format(now_epoch, total_epoch))
+#         my_print('#######################################Train')
+#         train_model(pra_model, all_loader_train, pra_optimizer=optimizer, pra_epoch_log='Epoch:{:>4}/{:>4}'.format(now_epoch, total_epoch))
 
         my_save_model(pra_model, now_epoch)
 
@@ -432,7 +498,7 @@ if __name__ == '__main__':
 
     # train and evaluate model
 #     run_trainval(model, pra_traindata_path='./nuscenes_pkl/train_data.pkl', pra_testdata_path='./nuscenes_pkl/test_data.pkl')
-    run_trainval(model, pra_traindata_path='./Dataset2/train_data.pkl', pra_testdata_path='./Dataset2/test_data.pkl')
+    run_trainval(model, pra_traindata_path='./dest/train_data.pkl', pra_testdata_path='./dest/test_data.pkl')
     
     # pretrained_model_path = './trained_models/model_epoch_0016.pt'
     # model = my_load_model(model, pretrained_model_path)
