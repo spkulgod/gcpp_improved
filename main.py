@@ -172,7 +172,7 @@ def compute_RMSE(pra_pred, pra_GT, pra_mask, pra_error_order=2):
 
     return overall_sum_time, overall_num, x2y2,ade_sum
 
-def compute_RMSE_multi(pra_pred, pra_GT, pra_mask,probabilities,pra_error_order=2):
+def compute_RMSE_multi(pra_pred, pra_GT, pra_mask,probabilities,pra_error_order=2, train=True):
     GT = pra_GT * pra_mask # (N, C, T, V)=(N, 2, 6, 120) 
     min_rmse = np.inf
     min_prob = 1
@@ -190,17 +190,21 @@ def compute_RMSE_multi(pra_pred, pra_GT, pra_mask,probabilities,pra_error_order=
 #     print('pred-shape',pred.shape)  # 5 128 2 12 50
     x2y2 = torch.sum(torch.abs(pred - GT)**pra_error_order, dim=2) # x^2+y^2, (M,N, C, T, V)->(M,N, T, V)=(5,N, 12, 120)
     rmse_mat = x2y2.sum(dim=-2) # (M,N, T, V) -> (M,N,V)
-    ade_sqrt=torch.sqrt(x2y2)  # (5,N, 12, 50)
     
-    fde_mat_full = ade_sqrt[:,:,-1,:] #5,N,50
-    fde_min,_ = torch.min(fde_mat_full,dim=0) # N 50
-    print("fde min shape",fde_min.shape)
-    fde_batch_sum = fde_min.sum()
-    
-#     ade_sqrt_prob=ade_sqrt.permute(2,0,1,3)*prob_mat #(12,5,N,50)
-    ade_sum_time=ade_sqrt.sum(dim=2) # (5 N 50)
-    ade_sum_min,_ = torch.min(ade_sum_time,dim=0) #(N,50)
-    ade_batch_sum = ade_sum_min.sum()
+    if not train:
+        ade_sqrt=torch.sqrt(x2y2)  # (5,N, 12, 50)
+
+        fde_mat_full = ade_sqrt[:,:,-1,:] #5,N,50
+        fde_min,_ = torch.min(fde_mat_full,dim=0) # N 50
+#         print("fde min shape",fde_min.shape)
+        fde_batch_sum = fde_min.sum()
+
+    #     ade_sqrt_prob=ade_sqrt.permute(2,0,1,3)*prob_mat #(12,5,N,50)
+        ade_sum_time=ade_sqrt.sum(dim=2) # (5 N 50)
+        ade_sum_min,_ = torch.min(ade_sum_time,dim=0) #(N,50)
+        ade_batch_sum = ade_sum_min.sum()
+        
+        return x2y2, ade_batch_sum.unsqueeze(0), fde_batch_sum.unsqueeze(0), overall_num.unsqueeze(0), torch.sum(overall_mask[:,-1]).unsqueeze(0)
     
 #     ade_sum_traj=ade_sqrt_prob.sum(dim=1) # (12,N,50)
 #     ade_sum_vehicles=ade_sum_traj.sum(dim=2).permute(1,0) # (12,N) -> (N,12)
@@ -220,8 +224,7 @@ def compute_RMSE_multi(pra_pred, pra_GT, pra_mask,probabilities,pra_error_order=
     min_prob = torch.sum(prob_mat)/overall_num
     
 #     min_prob = 1
-    
-    return min_rmse,min_prob,x2y2,ade_batch_sum.unsqueeze(0),fde_batch_sum.unsqueeze(0),overall_num.unsqueeze(0),torch.sum(overall_mask[:,-1]).unsqueeze(0)
+    return min_rmse, min_prob
 
 def train_model(pra_model, pra_data_loader, pra_optimizer, pra_epoch_log):
     # pra_model.to(dev)
@@ -255,7 +258,7 @@ def train_model(pra_model, pra_data_loader, pra_optimizer, pra_epoch_log):
             # We use abs to compute loss to backward update weights
             # (N, T), (N, T)
 #             min_rmse, min_prob, x2y2, ade_batch_sum, fde_batch_sum, overall_num ,torch.sum(overall_mask[:,-1])
-            min_rmse,prob,_,_,_,_,_ = compute_RMSE_multi(predicted, output_loc_GT, output_mask, prob_list,pra_error_order=1)
+            min_rmse,prob = compute_RMSE_multi(predicted, output_loc_GT, output_mask, prob_list,pra_error_order=1)
             KL_loss = -0.5 * (1 + torch.log(std.pow(2)) - mean.pow(2) - std.pow(2)).mean()
             p_loss = -torch.log(prob) 
             # overall_loss
@@ -329,7 +332,7 @@ def val_model(pra_model, pra_data_loader,train_it):
             ### overall dist
             
 # min_rmse, min_prob, x2y2, ade_batch_sum, fde_batch_sum, overall_num ,torch.sum(overall_mask[:,-1])
-            min_rmse, prob,x2y2,overall_ade,overall_fde,overall_num,fde_num = compute_RMSE_multi(predicted, ori_output_loc_GT, output_mask,prob_list)		
+            x2y2,overall_ade,overall_fde,overall_num,fde_num = compute_RMSE_multi(predicted, ori_output_loc_GT, output_mask,prob_list,2,False)		
             
             # all_overall_sum_list.extend(overall_sum_time.detach().cpu().numpy())
             all_overall_num_list.extend(overall_num.detach().cpu().numpy())
@@ -349,7 +352,7 @@ def val_model(pra_model, pra_data_loader,train_it):
             
             # min_rmse, min_prob, x2y2, ade_batch_sum, fde_batch_sum, overall_num ,torch.sum(overall_mask[:,-1])
 
-            car_min_rmse,car_prob, car_x2y2, car_ade,car_fde,car_num,car_fde_mask = compute_RMSE_multi(predicted, ori_output_loc_GT, car_mask,prob_list)		
+            car_x2y2, car_ade,car_fde,car_num,car_fde_mask = compute_RMSE_multi(predicted, ori_output_loc_GT, car_mask,prob_list,2,False)		
             all_car_num_list.extend(car_num.detach().cpu().numpy())
             all_car_ade_list.extend(car_ade.detach().cpu().numpy())
             all_car_fde_list.extend(car_fde.detach().cpu().numpy())
@@ -472,8 +475,8 @@ def run_trainval(pra_model, pra_traindata_path, pra_testdata_path):
     for now_epoch in range(total_epoch):
         all_loader_train = loader_train
 
-#         my_print('#######################################Train')
-#         train_model(pra_model, all_loader_train, pra_optimizer=optimizer, pra_epoch_log='Epoch:{:>4}/{:>4}'.format(now_epoch, total_epoch))
+        my_print('#######################################Train')
+        train_model(pra_model, all_loader_train, pra_optimizer=optimizer, pra_epoch_log='Epoch:{:>4}/{:>4}'.format(now_epoch, total_epoch))
 
         my_save_model(pra_model, now_epoch)
 
