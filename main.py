@@ -64,6 +64,8 @@ def display_result(pra_results, pra_pref='Train_epoch'):
     overall_fde_num_time = np.sum(all_overall_fde_num_list, axis=0) #t
 
 #     overall_loss_time = (overall_sum_time / (overall_num_time+1000))
+    print("overall_num_time",overall_num_time)
+    print("overall_fde_num",overall_fde_num_time)
     overall_ade = (overall_ade_time / (overall_num_time))
     overall_fde = (overall_fde_time / (overall_fde_num_time))
 
@@ -228,6 +230,7 @@ def compute_RMSE_multi(pra_pred, pra_GT, pra_mask,probabilities,pra_error_order=
 
 def train_model(pra_model, pra_data_loader, pra_optimizer, pra_epoch_log):
     # pra_model.to(dev)
+    my_print('{}'.format(pra_epoch_log))
     pra_model.train()
     rescale_xy = torch.ones((1,2,1,1)).to(dev)
     rescale_xy[:,0] = max_x
@@ -249,8 +252,9 @@ def train_model(pra_model, pra_data_loader, pra_optimizer, pra_epoch_log):
             A = A.float().to(dev) # shape(N,3,120,120) 
 
             #print("A shape::",A.shape,"input shape",input_data.shape)
-            predicted, mean, std,prob_list = pra_model(pra_x=input_data, pra_A=A, pra_pred_length=output_loc_GT.shape[-2], pra_teacher_forcing_ratio=1, pra_teacher_location=output_loc_GT) # (N, C, T, V)=(N, 2, 6, 120)
-
+            predicted, prob_list = pra_model(pra_x=input_data, pra_A=A, pra_pred_length=output_loc_GT.shape[-2], pra_teacher_forcing_ratio=0, pra_teacher_location=output_loc_GT) # (N, C, T, V)=(N, 2, 6, 120)
+#             print(prob_list[:,0,0])
+#             print("does a nan exist in predicted",torch.any(torch.isnan(predicted)))
 
             ########################################################
             # Compute loss for training
@@ -258,12 +262,16 @@ def train_model(pra_model, pra_data_loader, pra_optimizer, pra_epoch_log):
             # We use abs to compute loss to backward update weights
             # (N, T), (N, T)
 #             min_rmse, min_prob, x2y2, ade_batch_sum, fde_batch_sum, overall_num ,torch.sum(overall_mask[:,-1])
+#             print('predicted',predicted[:,0,:,0,0])
             min_rmse,prob = compute_RMSE_multi(predicted, output_loc_GT, output_mask, prob_list,pra_error_order=1)
-            KL_loss = -0.5 * (1 + torch.log(std.pow(2)) - mean.pow(2) - std.pow(2)).mean()
-            p_loss = -torch.log(prob) 
+#             KL_loss = -0.5 * (1 + torch.log(std.pow(2)) - mean.pow(2) - std.pow(2)).mean()
+            p_loss = -torch.log(prob+0.0001) 
             # overall_loss
-            total_loss = min_rmse + KL_loss + p_loss#(1,)
-
+            total_loss = min_rmse + p_loss#(1,)
+            if(torch.isnan(total_loss)):
+                aaaaaaaa=aaaaaaaaa
+#             print("min_rmse:",min_rmse,"  p_loss:", p_loss,"  total_loss:", total_loss)
+            
             now_lr = [param_group['lr'] for param_group in pra_optimizer.param_groups][0]
             print('|{}|{:>20}|\tIteration:{:>5}|\tLoss:{:.8f}|lr: {}|'.format(datetime.now(), pra_epoch_log, iteration, total_loss.data.item(),now_lr))
 
@@ -316,12 +324,14 @@ def val_model(pra_model, pra_data_loader,train_it):
             cat_mask = ori_data[:,2:3, now_history_frames:, :] # (N, C, T, V)=(N, 1, 6, 120)
 
             A = A.float().to(dev)
-            predicted,_,_,prob_list = pra_model(pra_x=input_data, pra_A=A, pra_pred_length=output_loc_GT.shape[-2], pra_teacher_forcing_ratio=0, pra_teacher_location=output_loc_GT) # (N, C, T, V)=(N, 2, 6, 120)
+            predicted, prob_list = pra_model(pra_x=input_data, pra_A=A, pra_pred_length=output_loc_GT.shape[-2], pra_teacher_forcing_ratio=0, pra_teacher_location=output_loc_GT) # (N, C, T, V)=(N, 2, 6, 120)
+#             print("does a nan exist in predicted",torch.any(torch.isnan(predicted)))
+#             torch.where(predicted==nan,0,predicted)
             ########################################################
             # Compute details for training
             ########################################################
             
-            for i in range(len(predicted)):
+            for i in range(predicted.shape[0]):
                 predicted[i] = predicted[i]*rescale_xy
                 # output_loc_GT = output_loc_GT*rescale_xy
                 for ind in range(1, predicted[i].shape[-2]):
@@ -363,41 +373,8 @@ def val_model(pra_model, pra_data_loader,train_it):
             all_car_sum_list.extend(car_x2y2)
 
 
-#             ### human dist
-#             human_mask = (cat_mask==3).float().to(dev)
-#             human_mask = output_mask * human_mask
-#             human_sum_time, human_num, human_x2y2, human_ade = compute_RMSE(predicted, ori_output_loc_GT, human_mask)		
-#             all_human_num_list.extend(human_num.detach().cpu().numpy())
-#             # x2y2 (N, 6, 39)
-#             human_x2y2 = human_x2y2.detach().cpu().numpy()
-#             human_x2y2 = human_x2y2.sum(axis=-1)
-#             all_human_sum_list.extend(human_x2y2)
-#             all_human_ade_list.extend(human_ade)
-
-#             ### bike dist
-#             bike_mask = (cat_mask==4).float().to(dev)
-#             bike_mask = output_mask * bike_mask
-#             bike_sum_time, bike_num, bike_x2y2, bike_ade = compute_RMSE(predicted, ori_output_loc_GT, bike_mask)		
-#             all_bike_num_list.extend(bike_num.detach().cpu().numpy())
-#             # x2y2 (N, 6, 39)
-#             bike_x2y2 = bike_x2y2.detach().cpu().numpy()
-#             bike_x2y2 = bike_x2y2.sum(axis=-1)
-#             all_bike_sum_list.extend(bike_x2y2)
-#             all_bike_ade_list.extend(bike_ade)
-
-#     print('allcar',np.array(all_car_ade_list).shape)
-#     print('numlist',np.array(all_car_num_list).shape)
     result_car = display_result([np.array(all_car_sum_list), np.array(all_car_num_list) , np.array(all_car_ade_list),np.array(all_car_fde_list),np.array(all_car_fde_num_list), train_it ], pra_pref='car')
-#     result_human =display_result([np.array(all_human_sum_list),np.array(all_human_num_list),np.array(all_human_ade_list)],pra_pref='human')
-#     result_bike = display_result([np.array(all_bike_sum_list), np.array(all_bike_num_list), np.array(all_bike_ade_list)], pra_pref='bike')
 
-# 	result_car_ade = display_result([np.array(all_car_ade_list), np.array(all_car_num_list)], pra_pref='car')
-# 	result_human_ade = display_result([np.array(all_human_ade_list), np.array(all_human_num_list)], pra_pref='human')
-# 	result_bike_ade = display_result([np.array(all_bike_ade_list), np.array(all_bike_num_list)], pra_pref='bike')
-
-#     result = result_car #to change only for vehicles
-#     overall_log = '|{}|[{}] All_All: {}'.format(datetime.now(), 'WS', ' '.join(['{:.3f}'.format(x) for x in list(result) + [np.sum(result)]]))
-#     my_print(overall_log)
 
     all_overall_sum_list = np.array(all_overall_sum_list)
     all_overall_num_list = np.array(all_overall_num_list)

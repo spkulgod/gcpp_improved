@@ -60,21 +60,19 @@ class Model(nn.Module):
         now_feat = now_feat.view(N*V, T, C) 
         return now_feat
 
-    def reshape_from_lstm(self, predicted):
+    def reshape_from_lstm(self, predicted2):
         # predicted (N*V, T, C)
-        M, NV, T, C = predicted.size()
-        now_feat = predicted.view(M,-1, self.num_node, T, self.out_dim_per_node) # (M,N, T, V, C) -> (M, N, C, T, V) [(M , N, V, T, C)]
-        now_feat = now_feat.permute(0,1, 4, 3, 2).contiguous() # (M, N, C, T, V)
+        predicted=predicted2.reshape(-1,3)[:,:2].reshape(predicted2.shape[0],predicted2.shape[1],-1,self.out_dim_per_node)
+        NV, T,M, C = predicted.size()
+#         print(M,NV,T,C)
+        now_feat = predicted.view(-1, self.num_node, T,M,self.out_dim_per_node) # (NV, T, M, C) -> (N,V,T,M, C) 
+        now_feat = now_feat.permute(3,0,4,2,1).contiguous() # (M, N, C, T, V)
+
         return now_feat
 
     def forward(self, pra_x, pra_A, pra_pred_length, pra_teacher_forcing_ratio=0, pra_teacher_location=None):
         x = pra_x
-
-        # forwad
-#         i = 1
         for gcn, importance in zip(self.st_gcn_networks, self.edge_importance):
-#             print(i,type(gcn))
-#             i=i+1
             if type(gcn) is nn.BatchNorm2d:
                 x = gcn(x)
             else:
@@ -88,18 +86,12 @@ class Model(nn.Module):
             pra_teacher_location = self.reshape_for_lstm(pra_teacher_location)
 
         # now_predict.shape = (N, T, V*C)
-        now_predict_car,mean_car, std_car,prob_car = self.seq2seq_car(in_data=graph_conv_feature, last_location=last_position[:,-1:,:], pred_length=pra_pred_length, teacher_forcing_ratio=pra_teacher_forcing_ratio, teacher_location=pra_teacher_location)
+        now_predict_car,prob_car = self.seq2seq_car(in_data=graph_conv_feature, last_location=last_position[:,-1:,:], pred_length=pra_pred_length, teacher_forcing_ratio=pra_teacher_forcing_ratio, teacher_location=pra_teacher_location)
         now_predict_car = self.reshape_from_lstm(now_predict_car) # (N, C, T, V)
-
-#         now_predict_human = self.seq2seq_human(in_data=graph_conv_feature, last_location=last_position[:,-1:,:], pred_length=pra_pred_length, teacher_forcing_ratio=pra_teacher_forcing_ratio, teacher_location=pra_teacher_location)
-#         now_predict_human = self.reshape_from_lstm(now_predict_human) # (N, C, T, V)
-
-#         now_predict_bike = self.seq2seq_bike(in_data=graph_conv_feature, last_location=last_position[:,-1:,:], pred_length=pra_pred_length, teacher_forcing_ratio=pra_teacher_forcing_ratio, teacher_location=pra_teacher_location)
-#         now_predict_bike = self.reshape_from_lstm(now_predict_bike) # (N, C, T, V)
 
         now_predict = now_predict_car
         
-        return now_predict, mean_car, std_car,prob_car
+        return now_predict,prob_car
 
 if __name__ == '__main__':
     model = Model(in_channels=3, pred_length=6, graph_args={}, edge_importance_weighting=True)
