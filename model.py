@@ -21,7 +21,7 @@ class Model(nn.Module):
 #         print(
         temporal_kernel_size = 5 #9 #5 # 3
         kernel_size = (temporal_kernel_size, spatial_kernel_size)
-        self.num_traj = 5
+        self.num_traj = 10
 
         # best
         self.st_gcn_networks = nn.ModuleList((

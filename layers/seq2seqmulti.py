@@ -50,7 +50,7 @@ class DecoderRNN(nn.Module):
         return decoded_output, hidden
 
 class Seq2Seq(nn.Module):
-    def __init__(self, input_size, hidden_size, num_layers, num_vehicles, dropout=0.5, isCuda=True, num_traj = 5):
+    def __init__(self, input_size, hidden_size, num_layers, num_vehicles, dropout=0.5, isCuda=True, num_traj = 10):
         super(Seq2Seq, self).__init__()
         self.isCuda = isCuda
         # self.pred_length = pred_length
@@ -87,9 +87,15 @@ class Seq2Seq(nn.Module):
             decoder_input = (teacher_location[:,t:t+1] if (type(teacher_location) is not type(None)) and teacher_force else now_out)
                 # decoder_input = now_out
 #         print("does a nan exist in outputs",torch.any(torch.isnan(outputs)))
-        probs_raw = torch.exp(now_out[:,:,2:15:3]).permute(2,0,1)
-        probs_raw = torch.min(probs_raw,torch.ones_like(probs_raw)*1000)
-        probs_raw = torch.max(probs_raw,torch.ones_like(probs_raw)*0.001)
+        out_raw = now_out[:,:,2:3*self.num_traj:3]
+        out_raw = torch.min(out_raw,torch.ones_like(out_raw)*10)
+        out_raw = torch.max(out_raw,torch.ones_like(out_raw)*-10)
+        
+        probs_raw = torch.exp(out_raw).permute(2,0,1)
+#         probs_raw = torch.min(probs_raw,torch.ones_like(probs_raw)*100)
+#         probs_raw = torch.max(probs_raw,torch.ones_like(probs_raw)*0.01)
+#         print('probs_raw max',torch.max(probs_raw))
+#         print('probs_raw min',torch.min(probs_raw))
 #         print("does a nan exist in probs raw",torch.any(torch.isnan(probs_raw)))
 #         print("does a nan exist in probs raw sum",torch.any(torch.isnan(torch.sum(probs_raw,dim=0))))
 #         print("does a zero exist in probs raw sum",torch.any(torch.sum(probs_raw,dim=0)==0))

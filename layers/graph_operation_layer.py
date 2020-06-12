@@ -24,14 +24,11 @@ class ConvTemporalGraphical(nn.Module):
             bias=bias)
 
     def forward(self, x, A):
-#         print("Shape of A in graph conv",A.shape,"input shape",x.shape)
         assert A.size(1) == self.kernel_size
         x = self.conv(x)
         n, kc, t, v = x.size()
-
         x = x.view(n, self.kernel_size, kc//self.kernel_size, t, v)
         x = torch.einsum('nkctv,nkvw->nctw', (x, A))
-
         return x.contiguous(), A
 
 # import torch
