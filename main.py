@@ -37,7 +37,7 @@ base_lr = 0.01
 lr_decay_epoch = 5
 dev = torch.device("cuda:0")
 # dev=device_("cuda" if cuda.is_available() else "cpu")
-work_dir = './trained_models'
+work_dir = './trained_models_temp'
 log_file = os.path.join(work_dir,'log_test.txt')
 test_result_file = 'prediction_result.txt'
 
@@ -322,9 +322,11 @@ def train_model(pra_model, pra_data_loader, pra_optimizer, pra_epoch_log):
             p_loss = -torch.log(prob+0.0001) 
             # overall_loss
             total_loss = min_rmse + p_loss#(1,)
+#             print(["min_rmse:{},p_loss:", p_loss,"  total_loss:", total_loss)
+            
             if(torch.isnan(total_loss)):
-                aaaaaaaa=aaaaaaaaa
-#             print("min_rmse:",min_rmse,"  p_loss:", p_loss,"  total_loss:", total_loss)
+                sys.exit()
+            
             
             now_lr = [param_group['lr'] for param_group in pra_optimizer.param_groups][0]
             print('|{}|{:>20}|\tIteration:{:>5}|\tLoss:{:.8f}|lr: {}|'.format(datetime.now(), pra_epoch_log, iteration, total_loss.data.item(),now_lr))
@@ -537,8 +539,8 @@ if __name__ == '__main__':
     model.to(dev)
 
     # train and evaluate model
-#     run_trainval(model, pra_traindata_path='./nuscenes_pkl/train_data.pkl', pra_testdata_path='./nuscenes_pkl/test_data.pkl')
-    run_trainval(model, pra_traindata_path='./Dataset2/train_data.pkl', pra_testdata_path='./Dataset2/test_data.pkl')
+    run_trainval(model, pra_traindata_path='./nuscenes_pkl/train_data.pkl', pra_testdata_path='./nuscenes_pkl/test_data.pkl')
+#     run_trainval(model, pra_traindata_path='./Dataset2/train_data.pkl', pra_testdata_path='./Dataset2/test_data.pkl')
     
     # pretrained_model_path = './trained_models/model_epoch_0016.pt'
     # model = my_load_model(model, pretrained_model_path)
