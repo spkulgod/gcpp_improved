@@ -544,7 +544,7 @@ if __name__ == '__main__':
     # train and evaluate model
     run_trainval(model, pra_traindata_path='./nuscenes_pkl_map/train_data.pkl', 
                         pra_trainimg_path = './nuscenes_pkl_map/train_data.txt', 
-                        pra_testdata_path='./nuscenes_pkl/test_data.pkl',
+                        pra_testdata_path='./nuscenes_pkl_map/test_data.pkl',
                         pra_testimg_path = './nuscenes_pkl_map/test_data.txt')
 #     run_trainval(model, pra_traindata_path='./Dataset2/train_data.pkl', pra_testdata_path='./Dataset2/test_data.pkl')
     
