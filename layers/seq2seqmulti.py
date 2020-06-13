@@ -4,6 +4,7 @@ from torch.autograd import Variable
 import numpy as np 
 import torch.nn.functional as F
 from scipy.stats import multivariate_normal
+import sys
 
 ####################################################
 # Seq2Seq LSTM AutoEncoder Model
@@ -56,11 +57,11 @@ class Seq2Seq(nn.Module):
         # self.pred_length = pred_length
 #         print("hidden size",hidden_size)
         self.encoder = EncoderRNN(input_size, hidden_size+1, num_layers, isCuda)
-        self.decoder = DecoderRNN(hidden_size+1, hidden_size+1, num_layers, num_traj, dropout, isCuda)
+        self.decoder = DecoderRNN(hidden_size+2, hidden_size+1, num_layers, num_traj, dropout, isCuda) ## Added +1 again
         self.num_traj = num_traj
         self.num_vehicles=num_vehicles
 
-    def forward(self, in_data, last_location, pred_length, teacher_forcing_ratio=0, teacher_location=None):
+    def forward(self, in_data, last_location, last_img_feature, pred_length, teacher_forcing_ratio=0, teacher_location=None):
         batch_size = in_data.shape[0]
         out_dim = self.decoder.output_size  #2     
         self.pred_length = pred_length
@@ -70,17 +71,22 @@ class Seq2Seq(nn.Module):
 #         print("last location",last_location.shape)
         padding = torch.zeros(last_location.shape[0],last_location.shape[1],1).to(torch.device("cuda:0"))
         decoder_input = torch.cat(self.num_traj*[torch.cat((last_location,padding),dim=2)],dim=2)
-#         print("does a nan exist in decoder input",torch.any(torch.isnan(decoder_input)))   
-#         print("decoder location",decoder_input.shape)
+#         print(decoder_input.shape)
         outputs = torch.zeros(batch_size, self.pred_length, out_dim)
         if self.isCuda:
             outputs = outputs.cuda()
             
         for t in range(self.pred_length):
-        # encoded_input = torch.cat((now_label, encoded_input), dim=-1) # merge class label into input feature
-#             print('decoder-input',decoder_input.shape)
-#             print('hidden-shape',hidden.shape)
-            now_out, hidden = self.decoder(decoder_input, hidden)
+            ### VV Changes        
+            img_traj = torch.zeros_like(last_img_feature).to(torch.device("cuda:0"))
+
+            for i in range(self.num_traj):
+                img_traj = torch.cat((img_traj,last_img_feature),-1)
+            
+            img_traj = img_traj[:,:,1:]           
+            img_last_cat = torch.cat((decoder_input, img_traj), -1) ## Change to include image features
+            
+            now_out, hidden = self.decoder(img_last_cat, hidden)
             now_out += decoder_input
             outputs[:,t:t+1] = now_out #UPDATE FOR TIMESTEPS
             teacher_force = np.random.random() < teacher_forcing_ratio

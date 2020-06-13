@@ -32,7 +32,7 @@ future_frames = 12 # 6 second * 2 frame/second
 batch_size_train = 128 
 batch_size_val = 32
 batch_size_test = 1
-total_epoch = 50
+total_epoch = 30
 base_lr = 0.01
 lr_decay_epoch = 5
 dev = torch.device("cuda:0")
@@ -154,8 +154,8 @@ def my_load_model(pra_model, pra_path):
     return pra_model
 
 
-def data_loader(pra_path, pra_batch_size=128, pra_shuffle=False, pra_drop_last=False, train_val_test='train'):
-    feeder = Feeder(data_path=pra_path, graph_args=graph_args, train_val_test=train_val_test)
+def data_loader(pra_path, pra_img_path, pra_batch_size=128, pra_shuffle=False, pra_drop_last=False, train_val_test='train'):
+    feeder = Feeder(data_path=pra_path, img_path = pra_img_path, graph_args=graph_args, train_val_test=train_val_test)
     loader = torch.utils.data.DataLoader(
         dataset=feeder,
         batch_size=pra_batch_size,
@@ -291,7 +291,7 @@ def train_model(pra_model, pra_data_loader, pra_optimizer, pra_epoch_log):
     rescale_xy[:,1] = max_y
 
     # train model using training data
-    for iteration, (ori_data, A, _) in enumerate(pra_data_loader):
+    for iteration, (ori_data, A, _, img) in enumerate(pra_data_loader):
         # print(iteration, ori_data.shape, A.shape)
         # ori_data: (N, C, T, V)
         # C = 11: [frame_id, object_id, object_type, position_x, position_y, position_z, object_length, pbject_width, pbject_height, heading] + [mask]
@@ -303,10 +303,11 @@ def train_model(pra_model, pra_data_loader, pra_optimizer, pra_epoch_log):
             output_loc_GT = data[:,:2,now_history_frames:,:] # (N, C, T, V)=(N, 2, 6, 120)  #future-gt
             output_mask = data[:,-1:,now_history_frames:,:] # (N, C, T, V)=(N, 1, 6, 120)
 
-            A = A.float().to(dev) # shape(N,3,120,120) 
+            A = A.float().to(dev) # shape(N,3,120,120)
+            img = img.float().to(dev)
 
             #print("A shape::",A.shape,"input shape",input_data.shape)
-            predicted, prob_list = pra_model(pra_x=input_data, pra_A=A, pra_pred_length=output_loc_GT.shape[-2], pra_teacher_forcing_ratio=0, pra_teacher_location=output_loc_GT) # (N, C, T, V)=(N, 2, 6, 120)
+            predicted, prob_list = pra_model(pra_x=input_data, pra_A=A, pra_img = img, pra_pred_length=output_loc_GT.shape[-2], pra_teacher_forcing_ratio=0, pra_teacher_location=output_loc_GT) # (N, C, T, V)=(N, 2, 6, 120)
 #             print(prob_list[:,0,0])
 #             print("does a nan exist in predicted",torch.any(torch.isnan(predicted)))
 
@@ -360,7 +361,7 @@ def val_model(pra_model, pra_data_loader,train_it):
     all_car_miss_num = []
 
     # train model using training data
-    for iteration, (ori_data, A, _) in enumerate(pra_data_loader):
+    for iteration, (ori_data, A, _, img) in enumerate(pra_data_loader):
         # data: (N, C, T, V)
         # C = 11: [frame_id, object_id, object_type, position_x, position_y, position_z, object_length, pbject_width, pbject_height, heading] + [mask]
         data, no_norm_loc_data, _ = preprocess_data(ori_data, rescale_xy)
@@ -377,7 +378,9 @@ def val_model(pra_model, pra_data_loader,train_it):
             cat_mask = ori_data[:,2:3, now_history_frames:, :] # (N, C, T, V)=(N, 1, 6, 120)
 
             A = A.float().to(dev)
-            predicted, prob_list = pra_model(pra_x=input_data, pra_A=A, pra_pred_length=output_loc_GT.shape[-2], pra_teacher_forcing_ratio=0, pra_teacher_location=output_loc_GT) # (N, C, T, V)=(N, 2, 6, 120)
+            img = img.float().to(dev)
+            
+            predicted, prob_list = pra_model(pra_x=input_data, pra_A=A, pra_img = img, pra_pred_length=output_loc_GT.shape[-2], pra_teacher_forcing_ratio=0, pra_teacher_location=output_loc_GT) # (N, C, T, V)=(N, 2, 6, 120)
 #             print("does a nan exist in predicted",torch.any(torch.isnan(predicted)))
 #             torch.where(predicted==nan,0,predicted)
             ########################################################
@@ -504,9 +507,9 @@ def test_model(pra_model, pra_data_loader):
                         writer.write(result)
 
 
-def run_trainval(pra_model, pra_traindata_path, pra_testdata_path):
-    loader_train = data_loader(pra_traindata_path, pra_batch_size=batch_size_train, pra_shuffle=True, pra_drop_last=True, train_val_test='train')
-    loader_val = data_loader(pra_testdata_path, pra_batch_size=batch_size_train, pra_shuffle=True, pra_drop_last=True, train_val_test='val')
+def run_trainval(pra_model, pra_traindata_path,pra_trainimg_path, pra_testdata_path, pra_testimg_path):
+    loader_train = data_loader(pra_traindata_path, pra_trainimg_path, pra_batch_size=batch_size_train, pra_shuffle=True, pra_drop_last=True, train_val_test='train')
+    loader_val = data_loader(pra_testdata_path, pra_testimg_path, pra_batch_size=batch_size_train, pra_shuffle=True, pra_drop_last=True, train_val_test='val')
 
     optimizer = optim.Adam(
         [{'params':model.parameters()},],) # lr = 0.0001)
@@ -539,7 +542,10 @@ if __name__ == '__main__':
     model.to(dev)
 
     # train and evaluate model
-    run_trainval(model, pra_traindata_path='./nuscenes_pkl/train_data.pkl', pra_testdata_path='./nuscenes_pkl/test_data.pkl')
+    run_trainval(model, pra_traindata_path='./nuscenes_pkl_map/train_data.pkl', 
+                        pra_trainimg_path = './nuscenes_pkl_map/train_data.txt', 
+                        pra_testdata_path='./nuscenes_pkl/test_data.pkl',
+                        pra_testimg_path = './nuscenes_pkl_map/test_data.txt')
 #     run_trainval(model, pra_traindata_path='./Dataset2/train_data.pkl', pra_testdata_path='./Dataset2/test_data.pkl')
     
     # pretrained_model_path = './trained_models/model_epoch_0016.pt'

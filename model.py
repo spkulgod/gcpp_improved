@@ -11,6 +11,13 @@ import numpy as np
 class Model(nn.Module):
     def __init__(self, in_channels, graph_args, edge_importance_weighting, **kwargs):
         super().__init__()
+        
+        # ResNet50 map model    
+        self.resnet50 = torch.hub.load('pytorch/vision:v0.4.2', 'resnet50', pretrained=True).float()
+        self.image_output_layer = nn.Linear(1000,50)
+
+        for param in self.resnet50.parameters():
+            param.requires_grad = False  ## Change based on the model
 
         # load graph
         self.graph = Graph(**graph_args)
@@ -69,9 +76,26 @@ class Model(nn.Module):
         now_feat = now_feat.permute(3,0,4,2,1).contiguous() # (M, N, C, T, V)
 
         return now_feat
+    
+        ################################## Map features reshape######################################  
+    def reshape_img_for_lstm(self, img_features):
+        bch, ftr = img_features.shape
+        temp_ftr = img_features.unsqueeze(0)
+        temp_ftr = temp_ftr.unsqueeze(0)
+        now_ftr = temp_ftr.permute(2, 0, 1, 3).contiguous() # (N, 1, 1, V) 
+        return now_ftr
+    
+    
 
-    def forward(self, pra_x, pra_A, pra_pred_length, pra_teacher_forcing_ratio=0, pra_teacher_location=None):
+    def forward(self, pra_x, pra_A, pra_img, pra_pred_length, pra_teacher_forcing_ratio=0, pra_teacher_location=None):
         x = pra_x
+        
+        #map_forward
+        map_feature = self.resnet50(pra_img)
+        map_feature = self.image_output_layer(map_feature)
+        map_feature = self.reshape_img_for_lstm(map_feature)
+        map_conv_feature = self.reshape_for_lstm(map_feature) # [N*V , 1 , 1 , 1]
+        
         for gcn, importance in zip(self.st_gcn_networks, self.edge_importance):
             if type(gcn) is nn.BatchNorm2d:
                 x = gcn(x)
@@ -86,7 +110,7 @@ class Model(nn.Module):
             pra_teacher_location = self.reshape_for_lstm(pra_teacher_location)
 
         # now_predict.shape = (N, T, V*C)
-        now_predict_car,prob_car = self.seq2seq_car(in_data=graph_conv_feature, last_location=last_position[:,-1:,:], pred_length=pra_pred_length, teacher_forcing_ratio=pra_teacher_forcing_ratio, teacher_location=pra_teacher_location)
+        now_predict_car,prob_car = self.seq2seq_car(in_data=graph_conv_feature, last_location=last_position[:,-1:,:],  last_img_feature = map_conv_feature, pred_length=pra_pred_length, teacher_forcing_ratio=pra_teacher_forcing_ratio, teacher_location=pra_teacher_location)
         now_predict_car = self.reshape_from_lstm(now_predict_car) # (N, C, T, V)
 
         now_predict = now_predict_car
