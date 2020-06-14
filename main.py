@@ -29,8 +29,8 @@ max_y = 1.
 history_frames = 6 # 3 second * 2 frame/second
 future_frames = 12 # 6 second * 2 frame/second 
 
-batch_size_train = 128 
-batch_size_val = 32
+batch_size_train = 64 
+batch_size_val = 4
 batch_size_test = 1
 total_epoch = 30
 base_lr = 0.01
@@ -509,7 +509,7 @@ def test_model(pra_model, pra_data_loader):
 
 def run_trainval(pra_model, pra_traindata_path,pra_trainimg_path, pra_testdata_path, pra_testimg_path):
     loader_train = data_loader(pra_traindata_path, pra_trainimg_path, pra_batch_size=batch_size_train, pra_shuffle=True, pra_drop_last=True, train_val_test='train')
-    loader_val = data_loader(pra_testdata_path, pra_testimg_path, pra_batch_size=batch_size_train, pra_shuffle=True, pra_drop_last=True, train_val_test='val')
+    loader_val = data_loader(pra_testdata_path, pra_testimg_path, pra_batch_size=batch_size_val, pra_shuffle=True, pra_drop_last=True, train_val_test='val')
 
     optimizer = optim.Adam(
         [{'params':model.parameters()},],) # lr = 0.0001)
@@ -544,7 +544,7 @@ if __name__ == '__main__':
     # train and evaluate model
     run_trainval(model, pra_traindata_path='./nuscenes_pkl_map/train_data.pkl', 
                         pra_trainimg_path = './nuscenes_pkl_map/train_data.txt', 
-                        pra_testdata_path='./nuscenes_pkl/test_data.pkl',
+                        pra_testdata_path='./nuscenes_pkl_map/test_data.pkl',
                         pra_testimg_path = './nuscenes_pkl_map/test_data.txt')
 #     run_trainval(model, pra_traindata_path='./Dataset2/train_data.pkl', pra_testdata_path='./Dataset2/test_data.pkl')
     
