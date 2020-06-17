@@ -158,10 +158,34 @@ def data_loader(pra_path, pra_img_path, pra_batch_size=128, pra_shuffle=False, p
         )
     return loader
 
-def preprocess_data(pra_data, pra_rescale_xy):
+def preprocess_data_train(pra_data, pra_rescale_xy):
     # pra_data: (N, C, T, V)
     # C = 11: [frame_id, object_id, object_type, position_x, position_y, position_z, object_length, pbject_width, pbject_height, heading] + [mask]	
     feature_id = [3, 4, 9, 10] # [x, y, heading, mask]
+    ori_data = pra_data[:,feature_id].detach()
+    data = ori_data.detach().clone() 
+# 	print('data shape',data[:, :2, 1:]!=0)
+
+    new_mask = (data[:, :2, 1:]!=0) * (data[:, :2, :-1]!=0) #when x and y exist for the 
+# 	print('newmask',new_mask.shape)
+    data[:, :2, 1:] = (data[:, :2, 1:] - data[:, :2, :-1]).float() * new_mask.float() #computing velocity and applying mask
+# 	print(data[0,:2,1],'sanity for 2 dimensions of data')
+    data[:, :2, 0] = 0	  
+
+    # # small vehicle: 1, big vehicles: 2, pedestrian 3, bicycle: 4, others: 5
+    object_type = pra_data[:,2:3]
+
+    data = data.float().to(dev)
+    ori_data = ori_data.float().to(dev)
+    object_type = object_type.to(dev) #type
+    data[:,:2] = data[:,:2] / pra_rescale_xy
+
+    return data, ori_data, object_type
+
+def preprocess_data_val(pra_data, pra_rescale_xy):
+    # pra_data: (N, C, T, V)
+    # C = 11: [frame_id, object_id, object_type, position_x, position_y, position_z, object_length, pbject_width, pbject_height, heading] + [mask]	
+    feature_id = [3, 4, 9, 11] # [x, y, heading, mask]
     ori_data = pra_data[:,feature_id].detach()
     data = ori_data.detach().clone() 
 # 	print('data shape',data[:, :2, 1:]!=0)
@@ -277,7 +301,7 @@ def train_model(pra_model, pra_data_loader, pra_optimizer, pra_epoch_log):
         # print(iteration, ori_data.shape, A.shape)
         # ori_data: (N, C, T, V)
         # C = 11: [frame_id, object_id, object_type, position_x, position_y, position_z, object_length, pbject_width, pbject_height, heading] + [mask]
-        data, no_norm_loc_data, object_type = preprocess_data(ori_data, rescale_xy)
+        data, no_norm_loc_data, object_type = preprocess_data_train(ori_data, rescale_xy)
         mid = int(data.shape[-2]/2)
         #print("A shape1 ::",A.shape)
         for now_history_frames in range(1,data.shape[-2]):  ### put just a no.
@@ -347,14 +371,22 @@ def val_model(pra_model, pra_data_loader,train_it):
     # train model using training data
     trajectories = {"predicted":[],"probs":[],"instance":[],"samples":[]}
     for iteration, (ori_data, A, _, img) in enumerate(pra_data_loader):
+        
+        token_id = [10]
+        token_data = ori_data[:,token_id].detach()
+        data_token_ids = token_data.detach().clone()
+        
         # data: (N, C, T, V)
         # C = 11: [frame_id, object_id, object_type, position_x, position_y, position_z, object_length, pbject_width, pbject_height, heading] + [mask]
-        data, no_norm_loc_data, _ = preprocess_data(ori_data, rescale_xy)
+        data, no_norm_loc_data, _ = preprocess_data_val(ori_data, rescale_xy)
 
         for now_history_frames in range(6, 7):
             input_data = data[:,:,:now_history_frames,:] # (N, C, T, V)=(N, 4, 6, 120)
             output_loc_GT = data[:,:2,now_history_frames:,:] # (N, C, T, V)=(N, 2, 6, 120)
             output_mask = data[:,-1:,now_history_frames:,:] # (N, C, T, V)=(N, 1, 6, 120)
+            
+            data_token_ids = data_token_ids[:,:,now_history_frames,:]
+            data_token_ids = data_token_ids.squeeze() # Shape: (N,50) ---> Use this for json file - id index starts from 1 
 
             ori_output_loc_GT = no_norm_loc_data[:,:2,now_history_frames:,:]
             ori_output_last_loc = no_norm_loc_data[:,:2,now_history_frames-1:now_history_frames,:]
