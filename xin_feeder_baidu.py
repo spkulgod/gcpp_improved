@@ -39,6 +39,8 @@ class Feeder(torch.utils.data.Dataset):
         self.all_feature = self.all_feature[train_id_list]
         self.all_adjacency = self.all_adjacency[train_id_list]
         self.all_mean_xy = self.all_mean_xy[train_id_list]
+        self.mean_rgb = [0.485, 0.456, 0.406]
+        self.std_rgb = [0.229, 0.224, 0.225]
 
         self.graph = Graph(**graph_args) #num_node = 120,max_hop = 1
 
@@ -84,7 +86,9 @@ class Feeder(torch.utils.data.Dataset):
         
         ## Image Loader 
         ## Changes to be made to the images and channels
-        now_img = plt.imread(self.all_img[idx][0])[:,:,:3]
+        now_img = plt.imread(self.all_img[idx][0])[:,:,:3] 
+        now_img = (now_img - self.mean_rgb)/self.std_rgb  
+
         now_img = np.moveaxis(now_img, -1, 0)
         
         return now_feature, now_A, now_mean_xy, now_img
