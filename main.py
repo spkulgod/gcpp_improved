@@ -9,6 +9,7 @@ from xin_feeder_baidu import Feeder
 from datetime import datetime
 import random
 import itertools
+import json
 
 CUDA_VISIBLE_DEVICES='0'
 os.environ["CUDA_VISIBLE_DEVICES"] = CUDA_VISIBLE_DEVICES
@@ -111,32 +112,6 @@ def display_result(pra_results, pra_pref='Train_epoch'):
     return overall_ade, overall_fde
 
 
-
-# def display_result_multi(pra_results, pra_pref='Train_epoch'):
-#     global min_it,min_ade
-#     all_overall_sum_list, all_overall_num_list, all_overall_ade_list,iteration = pra_results
-#     overall_sum_time = np.sum(all_overall_sum_list**0.5, axis=0) #  t
-#     overall_num_time = np.sum(all_overall_num_list, axis=0) # t 
-#     overall_ade_time =  np.sum(all_overall_ade_list, axis=0) #t
-#     overall_ade_batch=np.sum(all_overall_ade_list,
-
-#     overall_loss_time = (overall_sum_time / (overall_num_time+1000))
-#     overall_ade_tim = (overall_ade_time / (overall_num_time+1000))
-
-#     overall_log = '|{}|[{}] All_All: {}'.format(datetime.now(), pra_pref, ' '.join(['{:.3f}'.format(x) for x in list(overall_loss_time) + [np.sum(overall_loss_time)]]))
-#     my_print(overall_log)
-#     my_print('ADE={}'.format(overall_ade_tim))
-#     mean_ade = np.mean(overall_ade_tim)
-#     if(mean_ade<min_ade):
-#         min_ade = mean_ade
-#         min_it = iteration
-#     my_print('ADE mean={}'.format(mean_ade))
-#     my_print('ADE min={},  Iteration ={}'.format(min_ade,min_it))
-#     my_print('FDE={}'.format(overall_ade_tim[-1]))
-#     return overall_loss_time
-
-
-
 def my_save_model(pra_model, pra_epoch):
     path = '{}/model_epoch_{:04}.pt'.format(work_dir, pra_epoch)
     torch.save(
@@ -145,6 +120,24 @@ def my_save_model(pra_model, pra_epoch):
         }, 
         path)
     print('Successfull saved to {}'.format(path))
+
+
+def save_json(trajectories):
+#     print('shape of pred',trajectories["probs"].shape)
+#     print('shape of predicted trajs',trajectories["predicted"].shape)
+#     print('shape of samples',trajectories["samples"].shape)
+#     print('shape of instances',trajectories["instances"].shape)
+    output_list = []
+    for i in range(len(trajectories["samples"])):
+        for j in range(len(trajectories["samples"][0])):
+            output_list.append({"instance":trajectories["instances"][i][j],
+                         "sample":trajectories["samples"][i][j],
+                         "prediction":trajectories["predicted"][i][j],
+                         "probabilities":trajectories["probs"][i][j]}) 
+            
+    output_json = json.dumps(output_list)
+    with open('output.txt','w') as json_file:
+        json.dump(output_json,json_file)
 
 
 def my_load_model(pra_model, pra_path):
@@ -214,11 +207,8 @@ def compute_RMSE_multi(pra_pred, pra_GT, pra_mask,probabilities,pra_error_order=
     overall_num = torch.max(torch.sum(overall_mask), torch.ones(1,).to(dev)) 
     prob_mat = probabilities*pra_mask[:,0,0,:] #( Traj, batch, vehicles) ( 5, 128, 50)
     prob_max=torch.argsort(prob_mat, dim=0, descending=True) # 5 x 128 x 50
-#     print('argsorted',)
-#     print('prob max shape',prob_max.shape)
-#     print('prob all traj one batch one veh',prob_mat[:,1,0])
-    
     pred = pra_pred*pra_mask[:,:,:,:] # (M,N, C, T, V)=(5,N, 2, 12, 120)
+    
 #     print('mask-shape',pra_mask.shape)  #128 1 12 50
 #     print('pred-shape',pred.shape)  # 5 128 2 12 50
     x2y2 = torch.sum(torch.abs(pred - GT)**pra_error_order, dim=2) # x^2+y^2, (M,N, C, T, V)->(M,N, T, V)=(5,N, 12, 120)
@@ -262,15 +252,6 @@ def compute_RMSE_multi(pra_pred, pra_GT, pra_mask,probabilities,pra_error_order=
         
         return x2y2,  ade_batch_sum.unsqueeze(0), ade_batch_sum_k1.unsqueeze(0),  ade_batch_sum_k2.unsqueeze(0), fde_batch_sum.unsqueeze(0), overall_num.unsqueeze(0), torch.sum(overall_mask[:,-1]).unsqueeze(0), miss_sum.unsqueeze(0), miss_num.unsqueeze(0)
     
-#     ade_sum_traj=ade_sqrt_prob.sum(dim=1) # (12,N,50)
-#     ade_sum_vehicles=ade_sum_traj.sum(dim=2).permute(1,0) # (12,N) -> (N,12)
-                             
-    
-#     weighted_ade=ade_sum_time*prob_mat  # ( 5 N 50)
-#     sum_traj_ade=weighted_ade.sum(dim=0) #( N 50)
-#     sum_ade= sum_traj_ade.sum() # one value # mean shd be taken later for n*50 elements
-#     print(sum_ade)
-#     print('mean ade',sum_ade)
     
     min_args = torch.argmin(rmse_mat,dim=0)  #  (N,V)
 #     print("min args shape",min_args.shape)
@@ -291,6 +272,7 @@ def train_model(pra_model, pra_data_loader, pra_optimizer, pra_epoch_log):
     rescale_xy[:,1] = max_y
 
     # train model using training data
+#     P=[]
     for iteration, (ori_data, A, _, img) in enumerate(pra_data_loader):
         # print(iteration, ori_data.shape, A.shape)
         # ori_data: (N, C, T, V)
@@ -319,6 +301,8 @@ def train_model(pra_model, pra_data_loader, pra_optimizer, pra_epoch_log):
 #             min_rmse, min_prob, x2y2, ade_batch_sum, fde_batch_sum, overall_num ,torch.sum(overall_mask[:,-1])
 #             print('predicted',predicted[:,0,:,0,0])
             min_rmse,prob = compute_RMSE_multi(predicted, output_loc_GT, output_mask, prob_list,pra_error_order=1)
+            pred_masked=predicted*output_mask[:,:,:,:]
+#             torch.cat((P,pred_masked),0)
 #             KL_loss = -0.5 * (1 + torch.log(std.pow(2)) - mean.pow(2) - std.pow(2)).mean()
             p_loss = -torch.log(prob+0.0001) 
             # overall_loss
@@ -361,6 +345,7 @@ def val_model(pra_model, pra_data_loader,train_it):
     all_car_miss_num = []
 
     # train model using training data
+    trajectories = {"predicted":[],"probs":[],"instance":[],"samples":[]}
     for iteration, (ori_data, A, _, img) in enumerate(pra_data_loader):
         # data: (N, C, T, V)
         # C = 11: [frame_id, object_id, object_type, position_x, position_y, position_z, object_length, pbject_width, pbject_height, heading] + [mask]
@@ -400,7 +385,7 @@ def val_model(pra_model, pra_data_loader,train_it):
 # min_rmse, min_prob, x2y2, ade_batch_sum, fde_batch_sum, overall_num ,torch.sum(overall_mask[:,-1])
             x2y2,overall_ade,_,_,overall_fde,overall_num,fde_num,miss_sum,_ = compute_RMSE_multi(predicted, ori_output_loc_GT, output_mask,prob_list,2,False)		
             
-            # all_overall_sum_list.extend(overall_sum_time.detach().cpu().numpy())
+            
             all_overall_num_list.extend(overall_num.detach().cpu().numpy())
             all_overall_ade_list.extend(overall_ade.detach().cpu().numpy())
             all_overall_fde_list.extend(overall_fde.detach().cpu().numpy())
@@ -419,6 +404,10 @@ def val_model(pra_model, pra_data_loader,train_it):
             # min_rmse, min_prob, x2y2, ade_batch_sum, fde_batch_sum, overall_num ,torch.sum(overall_mask[:,-1])
 
             car_x2y2, car_ade,car_adek1,car_adek2,car_fde,car_num,car_fde_mask,car_miss_sum,car_miss_num = compute_RMSE_multi(predicted, ori_output_loc_GT, car_mask,prob_list,2,False)		
+            predicted=predicted.permute(1,4,0,3,2) 
+            prob_list = prob_list.permute(1,2,0)
+            trajectories["predicted"].extend(predicted.detach().cpu().numpy())
+            trajectories["probs"].extend(prob_list.detach().cpu().numpy())
             all_car_num_list.extend(car_num.detach().cpu().numpy())
             all_car_ade_list.extend(car_ade.detach().cpu().numpy())
             all_car_adek1_list.extend(car_adek1.detach().cpu().numpy())
@@ -446,7 +435,14 @@ def val_model(pra_model, pra_data_loader,train_it):
 #     all_overall_adek2_list = np.array(all_overall_adek1_list)
     all_overall_fde_list = np.array(all_overall_fde_list)
     all_overall_fde_num_list = np.array(all_overall_fde_num_list)
-
+    print("ade list shape",all_overall_ade_list.shape)
+#     my_print('P2'.format(P2))
+    trajectories["predicted"]=(np.array(trajectories["predicted"])).tolist()
+    trajectories["probs"]=np.array(trajectories["probs"]).tolist()
+    trajectories["samples"] = np.ones((len(trajectories["probs"]),len(trajectories["probs"][0]))).tolist()
+    trajectories["instances"] = np.ones((len(trajectories["probs"]),len(trajectories["probs"][0]))).tolist()
+    
+    save_json(trajectories)
 
     return all_overall_sum_list, all_overall_num_list, all_overall_ade_list, all_overall_fde_list, all_overall_fde_num_list, train_it
 
@@ -517,10 +513,10 @@ def run_trainval(pra_model, pra_traindata_path,pra_trainimg_path, pra_testdata_p
     for now_epoch in range(total_epoch):
         all_loader_train = loader_train
 
-        my_print('#######################################Train')
-        train_model(pra_model, all_loader_train, pra_optimizer=optimizer, pra_epoch_log='Epoch:{:>4}/{:>4}'.format(now_epoch, total_epoch))
+#         my_print('#######################################Train')
+#         train_model(pra_model, all_loader_train, pra_optimizer=optimizer, pra_epoch_log='Epoch:{:>4}/{:>4}'.format(now_epoch, total_epoch))
 
-        my_save_model(pra_model, now_epoch)
+#         my_save_model(pra_model, now_epoch)
 
         my_print('#######################################Test')
         display_result(
