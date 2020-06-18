@@ -9,6 +9,7 @@ from xin_feeder_baidu import Feeder
 from datetime import datetime
 import random
 import itertools
+from collections import defaultdict
 import json
 
 CUDA_VISIBLE_DEVICES='0'
@@ -125,20 +126,29 @@ def my_save_model(pra_model, pra_epoch):
 def save_json(trajectories,iteration):
     with open('token_index_dict.json') as f:
         i_s_dict = json.load(f)
-    output_list = []
+    
+    output_list=defaultdict(list)
+#     output_list = []
     for i in range(len(trajectories["index"])):
         for j in range(len(trajectories["index"][0])):
-            print(trajectories["index"][i][j])
+#             print(trajectories["index"][i][j])
             if(trajectories["index"][i][j] == 0):
                 continue
             ins_samp_list = i_s_dict[str(int(trajectories["index"][i][j]))]
-            output_list.append({"instance":ins_samp_list[0],
-                         "sample":ins_samp_list[1],
-                         "prediction":trajectories["predicted"][i][j],
-                         "probabilities":trajectories["probs"][i][j]}) 
+            output_list['instance'].append(ins_samp_list[0])
+            output_list['sample'].append(ins_samp_list[1])
+            output_list['prediction'].append(trajectories["predicted"][i][j])
+            output_list['probabilities'].append(trajectories["probs"][i][j])
+#             print('insamplelist',ins_sample_list[0])
             
+#             output_list.append({"instance":ins_samp_list[0],
+#                          "sample":ins_samp_list[1],
+#                          "prediction":trajectories["predicted"][i][j],
+#                          "probabilities":trajectories["probs"][i][j]}) 
+#             print(type(output_list))
+#     print('hh',output_list[0])       
     output_json = json.dumps(output_list)
-    with open('output.txt','w') as json_file:
+    with open('output.json','w') as json_file:
         json.dump(output_json,json_file)
 
 
